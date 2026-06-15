@@ -1,6 +1,8 @@
 .history
 .claude
 .venv
+.workbuddy
+knowledge-bases/stock-samples
 
 # 环境变量文件（可能包含敏感信息）
 .env
@@ -10,3 +12,24 @@
 # 本地配置文件
 config.json
 config.local.json
+
+# Cloudflare wrangler 缓存（包含账户信息）
+.wrangler/
+**/.wrangler/
+
+# 临时文件和数据缓存
+tmp/
+**/tmp/
+*.json.bak
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 运行时数据（含用户选股跟踪记录，不应入库）
+**/data/stock_selection_tracker.json
+
+# macOS
+.DS_Store
+

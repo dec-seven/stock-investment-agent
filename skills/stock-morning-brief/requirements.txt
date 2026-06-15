@@ -1,0 +1,8 @@
+akshare>=1.14
+requests>=2.28
+beautifulsoup4>=4.12
+lxml>=4.9
+pandas>=2.0
+weasyprint>=59
+anthropic>=0.25
+yfinance>=0.2

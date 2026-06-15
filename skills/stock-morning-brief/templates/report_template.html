@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{REPORT_DATE}}_股市早评</title>
+    <style>
+        /* ========== CSS Variables ========== */
+        :root {
+            /* 深蓝色商务风主色 */
+            --navy-deep:    #0a1628;
+            --navy-card:     #0f2044;
+            --navy-light:    #163a6e;
+            --blue-accent:   #4fc3f7;
+            --blue-glow:     rgba(79,195,247,0.25);
+            --gold:          #f0c14b;
+            --gold-soft:     #c9a227;
+            --gold-glow:     rgba(240,193,75,0.15);
+            --red-up:        #ff5252;
+            --red-glow:      rgba(255,82,82,0.2);
+            --green-down:    #69f0ae;
+            --green-glow:    rgba(105,240,174,0.2);
+            --yellow-warn:   #ffd740;
+            --yellow-glow:   rgba(255,215,64,0.15);
+            --green-good:    #69f0ae;
+            --red-bad:       #ff5252;
+            --text-primary:  #e8e8e8;
+            --text-secondary:#8899aa;
+            --text-muted:    #556677;
+            --border:        rgba(79,195,247,0.18);
+            --border-gold:   rgba(240,193,75,0.25);
+        }
+
+        /* ========== Reset & Base ========== */
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+            background: var(--navy-deep);
+            color: var(--text-primary);
+            line-height: 1.75;
+            padding: 24px 16px 60px;
+            min-height: 100vh;
+            background-image:
+                radial-gradient(ellipse at 10% 0%, rgba(79,195,247,0.06) 0%, transparent 60%),
+                radial-gradient(ellipse at 90% 100%, rgba(240,193,75,0.04) 0%, transparent 60%);
+        }
+        .container { max-width: 1080px; margin: 0 auto; }
+
+        /* ========== Header ========== */
+        .header {
+            text-align: center;
+            padding: 40px 28px 32px;
+            background: linear-gradient(165deg, #0f2044 0%, #0a1628 50%, #0d1b3e 100%);
+            border-radius: 18px;
+            border: 1px solid var(--border);
+            margin-bottom: 28px;
+            position: relative;
+            overflow: hidden;
+        }
+        .header::before {
+            content: "";
+            position: absolute;
+            top: -40%; left: -10%;
+            width: 120%; height: 120%;
+            background: radial-gradient(circle at 50% 50%, rgba(79,195,247,0.04) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .header-badge {
+            display: inline-block;
+            background: var(--gold-glow);
+            color: var(--gold);
+            padding: 5px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            border: 1px solid var(--border-gold);
+            margin-bottom: 18px;
+            letter-spacing: 1px;
+        }
+        .header h1 {
+            font-size: 30px;
+            font-weight: 800;
+            background: linear-gradient(90deg, var(--gold) 0%, #fff 50%, var(--blue-accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+        .header .subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 22px;
+        }
+        .header-links {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+            position: relative;
+            z-index: 1;
+        }
+        .header-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 16px;
+            border-radius: 999px;
+            border: 1px solid var(--border-gold);
+            background: rgba(240,193,75,0.08);
+            color: var(--gold);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        .header-link:hover {
+            border-color: var(--gold);
+            background: rgba(240,193,75,0.14);
+            transform: translateY(-1px);
+        }
+        .progress-wrap { max-width: 420px; margin: 0 auto; }
+        .progress-bar {
+            height: 8px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.04);
+        }
+        .progress-bar .fill {
+            height: 100%;
+            width: {{LEARNING_PROGRESS}}%;
+            background: linear-gradient(90deg, var(--gold) 0%, var(--blue-accent) 100%);
+            border-radius: 10px;
+            transition: width 0.6s ease;
+        }
+        .progress-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+
+        /* ========== Section (Card) ========== */
+        .section {
+            background: linear-gradient(170deg, var(--navy-card) 0%, rgba(15,32,68,0.92) 100%);
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            padding: 28px 30px;
+            margin-bottom: 22px;
+            position: relative;
+            overflow: hidden;
+        }
+        .section::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0;
+            width: 4px; height: 100%;
+            background: linear-gradient(180deg, var(--blue-accent), var(--gold));
+            border-radius: 0 4px 4px 0;
+            opacity: 0.7;
+        }
+        .section-title {
+            font-size: 19px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+            padding-left: 14px;
+            border-left: 3px solid var(--blue-accent);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .section-title .icon { font-size: 20px; }
+        .section-title .tag {
+            font-size: 11px;
+            background: var(--gold-glow);
+            color: var(--gold-soft);
+            padding: 2px 10px;
+            border-radius: 10px;
+            font-weight: 500;
+            border: 1px solid var(--border-gold);
+        }
+
+        /* ========== US Stock Cards ========== */
+        .us-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 22px;
+        }
+        .us-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 18px 16px;
+            text-align: center;
+            transition: border-color 0.2s;
+        }
+        .us-card:hover { border-color: var(--blue-accent); }
+        .us-card .label { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+        .us-card .value { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+        .us-card .value.up   { color: var(--red-up); }
+        .us-card .value.down { color: var(--green-down); }
+        .us-card .change {
+            display: inline-block;
+            padding: 3px 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .us-card .change.up   { background: var(--red-glow);   color: var(--red-up); }
+        .us-card .change.down { background: var(--green-glow); color: var(--green-down); }
+        .us-card .reason { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+
+        /* ========== US Extended Grid ========== */
+        .us-extended-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .us-ext-card {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px 14px;
+            text-align: center;
+        }
+        .us-ext-card .name { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+        .us-ext-card .price { font-size: 15px; font-weight: 700; }
+        .us-ext-card .price.up   { color: var(--red-up); }
+        .us-ext-card .price.down { color: var(--green-down); }
+        .us-ext-card .pct { font-size: 12px; font-weight: 600; }
+        .us-ext-card .pct.up   { color: var(--red-up); }
+        .us-ext-card .pct.down { color: var(--green-down); }
+        .us-ext-card .reason { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+
+        /* ========== Data Table ========== */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 14px 0;
+            font-size: 14px;
+        }
+        .data-table thead th {
+            background: rgba(79,195,247,0.08);
+            color: var(--blue-accent);
+            padding: 11px 14px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .data-table tbody td {
+            padding: 10px 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            vertical-align: middle;
+        }
+        .data-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+        .data-table .num { font-weight: 700; font-variant-numeric: tabular-nums; }
+        .data-table .up   { color: var(--red-up);   font-weight: 700; }
+        .data-table .down { color: var(--green-down); font-weight: 700; }
+
+        /* ========== Signal / Badge ========== */
+        .signal-badge {
+            display: inline-block;
+            padding: 3px 12px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .signal-badge.bullish { background: rgba(255,82,82,0.12);   color: var(--red-up); }
+        .signal-badge.bearish { background: rgba(105,240,174,0.12); color: var(--green-down); }
+        .signal-badge.neutral { background: rgba(79,195,247,0.12);  color: var(--blue-accent); }
+
+        /* ========== Impact Analysis Box ========== */
+        .impact-box {
+            background: rgba(79,195,247,0.06);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--blue-accent);
+            border-radius: 10px;
+            padding: 18px 22px;
+            margin: 18px 0;
+        }
+        .impact-box .label {
+            font-size: 12px;
+            color: var(--blue-accent);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        .impact-box .content { font-size: 14.5px; line-height: 1.8; }
+
+        /* ========== A股 Impact Box ========== */
+        .a-impact-box {
+            background: rgba(240,193,75,0.06);
+            border: 1px solid var(--border-gold);
+            border-left: 4px solid var(--gold);
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin: 16px 0;
+        }
+        .a-impact-box .label {
+            font-size: 12px;
+            color: var(--gold);
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .a-impact-box .content { font-size: 14px; line-height: 1.7; }
+
+        /* ========== Emotion Box ========== */
+        .emotion-box {
+            background: rgba(105,240,174,0.05);
+            border: 1px solid rgba(105,240,174,0.2);
+            border-radius: 10px;
+            padding: 14px 18px;
+            margin: 14px 0;
+        }
+        .emotion-box .label {
+            font-size: 12px;
+            color: var(--green-down);
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .emotion-box .content { font-size: 13.5px; color: var(--text-secondary); }
+
+        /* ========== Global Market Grid ========== */
+        .global-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+        .global-box {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px;
+        }
+        .global-box .box-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+        .global-box .data-table { margin: 0; font-size: 13px; }
+        .global-box .data-table td { padding: 6px 0; border: none; }
+
+        /* ========== Event Timeline ========== */
+        .timeline { position: relative; padding-left: 28px; margin: 16px 0; }
+        .timeline::before {
+            content: "";
+            position: absolute;
+            left: 8px; top: 6px; bottom: 6px;
+            width: 2px;
+            background: linear-gradient(180deg, var(--blue-accent), var(--gold), var(--blue-accent));
+            border-radius: 2px;
+        }
+        .timeline-item {
+            position: relative;
+            margin-bottom: 18px;
+            padding-left: 16px;
+        }
+        .timeline-item::before {
+            content: "";
+            position: absolute;
+            left: -24px; top: 7px;
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: var(--navy-card);
+            border: 2px solid var(--blue-accent);
+        }
+        .timeline-item.done::before    { background: var(--blue-accent); border-color: var(--blue-accent); }
+        .timeline-item.today::before  { background: var(--gold);        border-color: var(--gold); }
+        .timeline-item.future::before { background: var(--navy-card);  border-color: var(--text-muted); }
+        .timeline-item.bullish::before { background: var(--red-up); border-color: var(--red-up); }
+        .timeline-item.bearish::before { background: var(--green-down); border-color: var(--green-down); }
+        .timeline-item.warning::before { background: var(--yellow-warn); border-color: var(--yellow-warn); }
+        .timeline-date {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+        .timeline-date.today { color: var(--gold); }
+        .timeline-text { font-size: 14px; }
+        .timeline-tag {
+            display: inline-block;
+            font-size: 10px;
+            padding: 1px 8px;
+            border-radius: 8px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        .timeline-tag.bullish { background: rgba(255,82,82,0.15); color: var(--red-up); }
+        .timeline-tag.bearish { background: rgba(105,240,174,0.15); color: var(--green-down); }
+        .timeline-tag.warning { background: rgba(255,215,64,0.15); color: var(--yellow-warn); }
+        .timeline-result {
+            margin-top: 6px;
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 6px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            border-left: 2px solid var(--blue-accent);
+        }
+        .timeline-result.bullish { border-left-color: var(--red-up); }
+        .timeline-result.bearish { border-left-color: var(--green-down); }
+        .timeline-result .label { color: var(--blue-accent); font-weight: 600; }
+        .timeline-result .value { font-weight: 700; }
+
+        /* ========== Index Grid (A-share yesterday) ========== */
+        .index-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+        .index-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 14px;
+            text-align: center;
+        }
+        .index-card .name { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+        .index-card .price { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
+        .index-card .price.up   { color: var(--red-up); }
+        .index-card .price.down { color: var(--green-down); }
+        .index-card .pct { font-size: 14px; font-weight: 700; }
+        .index-card .pct.up   { color: var(--red-up); }
+        .index-card .pct.down { color: var(--green-down); }
+
+        /* ========== Sector Table ========== */
+        .sector-table .star { color: var(--gold); font-size: 14px; letter-spacing: 2px; }
+
+        /* ========== Risk Box ========== */
+        .risk-box {
+            background: rgba(255,82,82,0.06);
+            border: 1px solid rgba(255,82,82,0.2);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 12px;
+        }
+        .risk-box .risk-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--red-up);
+            margin-bottom: 6px;
+        }
+        .risk-box .risk-desc { font-size: 13.5px; color: var(--text-secondary); line-height: 1.75; }
+
+        /* ========== Stock Selection Cards (v3样式升级) ========== */
+        .stock-cards { display: flex; flex-direction: column; gap: 14px; }
+        .stock-card {
+            background: rgba(255,255,255,0.025);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        .stock-card::after {
+            content: "";
+            position: absolute;
+            top: 0; right: 0;
+            width: 100px; height: 100px;
+            background: radial-gradient(circle at 100% 0%, rgba(79,195,247,0.04) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .stock-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .stock-name { font-size: 17px; font-weight: 800; }
+        .stock-code {
+            font-size: 12px;
+            color: var(--text-secondary);
+            background: rgba(255,255,255,0.05);
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+        .stock-market {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+        .stock-market.sh { background: rgba(255,82,82,0.12);    color: var(--red-up); }
+        .stock-market.sz { background: rgba(79,195,247,0.12);   color: var(--blue-accent); }
+        .stock-market.cy { background: rgba(105,240,174,0.12);  color: var(--green-down); }
+        .stock-market.kc { background: rgba(240,193,75,0.12);    color: var(--gold); }
+        .stock-total-score {
+            margin-left: auto;
+            text-align: center;
+        }
+        .stock-total-score .score-val {
+            font-size: 28px;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--green-good), #aeea00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            line-height: 1;
+        }
+        .stock-total-score .score-label { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+        .stock-stars { color: var(--gold); font-size: 13px; letter-spacing: 2px; margin-top: 1px; }
+
+        /* Score Bars - 紧凑三列布局 (v3样式) */
+        .score-bars { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px 16px; margin: 10px 0; }
+        .score-bar-row { display: flex; align-items: center; gap: 7px; }
+        .score-bar-label { font-size: 11px; color: var(--text-secondary); width: 78px; flex-shrink: 0; }
+        .score-bar-track {
+            flex: 1;
+            height: 6px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .score-bar-fill {
+            height: 100%;
+            border-radius: 8px;
+            transition: width 0.4s ease;
+        }
+        .score-bar-fill.good  { background: linear-gradient(90deg, #69f0ae, #aeea00); }
+        .score-bar-fill.mid   { background: linear-gradient(90deg, #ffd740, #ff9100); }
+        .score-bar-fill.bad   { background: linear-gradient(90deg, #ff5252, #ff9100); }
+        .score-bar-val { font-size: 11px; font-weight: 700; width: 32px; text-align: right; flex-shrink: 0; }
+        .score-bar-val.good { color: var(--green-good); }
+        .score-bar-val.mid  { color: var(--gold); }
+        .score-bar-val.bad  { color: var(--red-bad); }
+
+        /* 内联小计行 */
+        .score-summary {
+            display: flex;
+            justify-content: flex-end;
+            gap: 24px;
+            margin: 8px 0 4px;
+            padding-top: 6px;
+            border-top: 1px dashed rgba(79,195,247,0.15);
+            font-size: 12px;
+        }
+        .score-summary .sum-item { display: flex; align-items: center; gap: 6px; }
+        .score-summary .sum-label { color: var(--text-muted); }
+        .score-summary .sum-val-fund { color: var(--blue-accent); font-weight: 700; }
+        .score-summary .sum-val-tech { color: var(--gold); font-weight: 700; }
+        .score-summary .sum-divider { color: var(--border); }
+
+        .stock-logic {
+            background: rgba(79,195,247,0.05);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-top: 10px;
+            font-size: 12.5px;
+            line-height: 1.75;
+            border: 1px solid rgba(79,195,247,0.1);
+        }
+        .stock-logic .label { color: var(--blue-accent); font-weight: 700; margin-right: 4px; }
+        .stock-logic .logic-item { display: inline-block; margin-right: 16px; }
+
+        /* ========== Strategy List ========== */
+        .strategy-list { list-style: none; padding: 0; }
+        .strategy-list li {
+            padding: 10px 16px 10px 38px;
+            position: relative;
+            font-size: 14px;
+            margin-bottom: 6px;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+        .strategy-list li::before {
+            content: "✔";
+            position: absolute;
+            left: 10px; top: 10px;
+            color: var(--green-good);
+            font-weight: 800;
+        }
+
+        /* ========== Methodology Notes ========== */
+        .method-list { list-style: none; padding: 0; counter-reset: step; }
+        .method-list li {
+            padding: 10px 16px;
+            margin-bottom: 8px;
+            background: rgba(255,255,255,0.02);
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.04);
+            font-size: 14px;
+            line-height: 1.7;
+            position: relative;
+            padding-left: 44px;
+        }
+        .method-list li::before {
+            content: counter(step);
+            counter-increment: step;
+            position: absolute;
+            left: 12px; top: 10px;
+            width: 22px; height: 22px;
+            background: var(--blue-accent);
+            color: var(--navy-deep);
+            border-radius: 50%;
+            font-size: 12px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* ========== Mentality Management (情绪色彩动态) ========== */
+        .mentality-box {
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin: 14px 0;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid;
+        }
+        .mentality-box::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0;
+            width: 4px; height: 100%;
+            border-radius: 4px 0 0 4px;
+        }
+        .mentality-box .mentality-stage {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .mentality-box .advice {
+            font-size: 13.5px;
+            color: var(--text-secondary);
+            line-height: 1.75;
+            padding-left: 14px;
+            border-left: 2px solid var(--border);
+        }
+
+        /* ========== Operation Discipline List (新增) ========== */
+        .discipline-list { list-style: none; padding: 0; }
+        .discipline-list li {
+            padding: 12px 16px 12px 42px;
+            position: relative;
+            font-size: 13.5px;
+            margin-bottom: 8px;
+            background: rgba(79,195,247,0.03);
+            border-radius: 10px;
+            border: 1px solid rgba(79,195,247,0.08);
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+        .discipline-list li::before {
+            content: "🛡";
+            position: absolute;
+            left: 12px; top: 12px;
+            font-size: 15px;
+        }
+
+        /* ========== Global Market Analysis (新增) ========== */
+        .global-analysis {
+            background: linear-gradient(135deg, rgba(240,193,75,0.06) 0%, rgba(79,195,247,0.04) 100%);
+            border: 1px solid var(--border-gold);
+            border-radius: 10px;
+            padding: 14px 18px;
+            margin-top: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+        .global-analysis::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0;
+            width: 4px; height: 100%;
+            background: linear-gradient(180deg, var(--gold), var(--blue-accent));
+            border-radius: 4px 0 0 4px;
+        }
+        .global-analysis .analysis-label {
+            font-size: 12px;
+            color: var(--gold);
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .global-analysis .analysis-content {
+            font-size: 13.5px;
+            color: var(--text-secondary);
+            line-height: 1.75;
+        }
+
+        /* ========== Sentiment Color System (新增) ========== */
+        /* 情绪高涨 → 红色系 */
+        .sentiment-hot {
+            background: linear-gradient(135deg, rgba(255,82,82,0.08) 0%, rgba(255,82,82,0.03) 100%);
+            border-color: rgba(255,82,82,0.25);
+        }
+        .sentiment-hot .mentality-stage { color: #ff5252; }
+        .sentiment-hot::before { background: linear-gradient(180deg, #ff5252, #ff9100); }
+
+        /* 情绪温和 → 黄色系 */
+        .sentiment-warm {
+            background: linear-gradient(135deg, rgba(255,215,64,0.08) 0%, rgba(255,215,64,0.03) 100%);
+            border-color: rgba(255,215,64,0.25);
+        }
+        .sentiment-warm .mentality-stage { color: #ffd740; }
+        .sentiment-warm::before { background: linear-gradient(180deg, #ffd740, #ff9100); }
+
+        /* 情绪寒冷 → 绿色系 */
+        .sentiment-cold {
+            background: linear-gradient(135deg, rgba(105,240,174,0.08) 0%, rgba(105,240,174,0.03) 100%);
+            border-color: rgba(105,240,174,0.25);
+        }
+        .sentiment-cold .mentality-stage { color: #69f0ae; }
+        .sentiment-cold::before { background: linear-gradient(180deg, #69f0ae, #00e676); }
+
+        /* 情绪极寒 → 蓝色系 */
+        .sentiment-frozen {
+            background: linear-gradient(135deg, rgba(79,195,247,0.08) 0%, rgba(79,195,247,0.03) 100%);
+            border-color: rgba(79,195,247,0.25);
+        }
+        .sentiment-frozen .mentality-stage { color: #4fc3f7; }
+        .sentiment-frozen::before { background: linear-gradient(180deg, #4fc3f7, #039be5); }
+
+        /* ========== Footer ========== */
+        .footer {
+            text-align: center;
+            padding: 28px 20px;
+            margin-top: 32px;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 13px;
+            line-height: 2;
+        }
+        .footer a { color: var(--blue-accent); text-decoration: none; }
+
+        /* ========== Misc ========== */
+        .divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--border), transparent);
+            margin: 20px 0;
+        }
+        .highlight-gold { color: var(--gold); font-weight: 700; }
+        .highlight-blue { color: var(--blue-accent); font-weight: 700; }
+        .text-sm  { font-size: 13px; }
+        .text-muted { color: var(--text-muted); }
+
+        /* ========== Responsive ========== */
+        @media (max-width: 768px) {
+            .us-cards { grid-template-columns: 1fr; }
+            .us-extended-grid { grid-template-columns: repeat(2, 1fr); }
+            .index-grid { grid-template-columns: repeat(2, 1fr); }
+            .global-grid { grid-template-columns: 1fr; }
+            .section { padding: 20px 18px; }
+            .score-bars { grid-template-columns: 1fr 1fr; }
+            .score-bar-label { width: 72px; }
+            .stock-header { flex-direction: column; align-items: flex-start; }
+            .stock-total-score { margin-left: 0; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <!-- ==================== HEADER ==================== -->
+    <div class="header">
+        <div class="header-badge">📊 盘前早报</div>
+        <h1>{{REPORT_DATE}} 盘前早报</h1>
+        <div class="header-links">
+            <a class="header-link" href="/stock-tracker/" target="_blank" rel="noopener noreferrer">📈 入选股票跟踪</a>
+        </div>
+    </div>
+
+    <!-- ==================== SECTION 1: 市场定调 ==================== -->
+    <div class="section">
+        <div class="section-title">
+            <span class="icon">🎯</span>
+            一、市场定调
+            <span class="tag">{{REPORT_DATE}}</span>
+        </div>
+        <div class="impact-box">
+            <div class="content">{{MARKET_TONE}}</div>
+        </div>
+    </div>
+
+    <!-- ==================== SECTION 2: 隔夜美股 ==================== -->
+    <div class="section">
+        <div class="section-title">
+            <span class="icon">🌐</span>
+            二、隔夜美股
+            <span class="tag">数据截至美东时间收盘</span>
+        </div>
+
+        <!-- 三大指数卡片（由 generate_report.py 动态生成） -->
+        {{US_CARDS_HTML}}
+
+        <!-- 详细数据表格（由 generate_report.py 动态生成） -->
+        {{US_TABLE_HTML}}
+
+        <!-- 美股扩展网格（VIX/SOX/英伟达/特斯拉/原油/黄金） -->
+        {{US_EXTENDED_GRID_HTML}}
+
+        <!-- 对A股影响判断 -->
+        <div class="a-impact-box">
+            <div class="label">📌 对A股影响判断</div>
+            <div class="content">{{US_IMPACT_ON_A}}</div>
+        </div>
+    </div>
+
+    <!-- ==================== SECTION 3: 全球市场概览 ==================== -->
+    <div class="section">
+        <div class="section-title">
+            <span class="icon">🌏</span>
+            三、全球市场概览
+            <span class="tag">亚太 + 欧洲 + 汇率大宗</span>
+        </div>
+        <!-- 全球市场（由 generate_report.py 动态生成） -->
+        {{GLOBAL_MARKET_HTML}}
+
+        <!-- 全球市场对A股影响分析 -->
+        <div class="global-analysis">
+            <div class="analysis-label">🌏 全球市场对A股影响</div>
+            <div class="analysis-content">{{GLOBAL_MARKET_ANALYSIS}}</div>
+        </div>
+    </div>
+
+    <!-- ==================== SECTION 4: 近期重磅事件时间线 ==================== -->
+    <div class="section">
+        <div class="section-title">
+            <span class="icon">📅</span>
+            四、近期重磅事件时间线
+            <span class="tag">前3天 + 后7天 · 利好红·利空绿·警示黄</span>
+        </div>
+        <!-- 近期重磅事件时间线（由 generate_report.py 动态生成完整 div） -->
+        {{EVENT_TIMELINE}}
+    </div>
+
+    <!-- ==================== SECTION 5: 昨日A股回顾 ==================== -->
+    <div class="section">
+        <div class="section-title">
+            <span class="icon">📈</span>
+            五、昨日A股回顾
+            <span class="tag">{{YESTERDAY_DATE}}</span>
+        </div>
+
+        <div class="index-grid">
+            <div class="index-card">
+                <div class="name">上证指数</div>
+                {{SH_INDEX_CARD_BLOCK}}
+            </div>
+            <div class="index-card">
+                <div class="name">深证成指</div>
+                {{SZ_INDEX_CARD_BLOCK}}
+            </div>
+            <div class="index-card">
+                <div class="name">创业板指</div>
+                {{CYB_INDEX_CARD_BLOCK}}
+            </div>
+            <div class="index-card">
+                <div class="name">沪深300</div>
+                {{HS300_INDEX_CARD_BLOCK}}
+            </div>
+        </div>
+
+        <!-- A股回顾数据表格（由 generate_report.py 动态生成） -->
+        {{A_REVIEW_TABLE_HTML}}
+
+        <!-- 情绪特征 -->
+        <div class="emotion-box">
+            <div class="label">💭 情绪特征</div>
+            <div class="content">{{EMOTION_FEATURE}}</div>
+        </div>
+
+        <!-- 🆕 心态管理（从盘前策略吸收）-->
+        {{MENTALITY_MANAGEMENT_CONTENT}}
+
+        <!-- 见顶/见底信号监控 -->
+        {{SIGNAL_MONITOR}}
+
+        {{YESTERDAY_REVIEW}}
+    </div>
+
+    <!-- ==================== SECTION 6: 今日预判与板块方向 ==================== -->
+    <div class="section">
+        <div class="section-title">
+            <span class="icon">🎯</span>
+            六、今日预判与板块方向
+            <span class="tag">{{REPORT_DATE}}</span>
+        </div>
+
+        <!-- 方向判断表格（由 AI 分析文本中的 DIRECTION_JUDGMENT 等字段填充） -->
+        {{TODAY_PREDICTION_TABLE_HTML}}
+
+        <div class="divider"></div>
+
+        <!-- 板块方向（由 AI 分析文本中的 SECTOR_DIRECTIONS 填充） -->
+        {{SECTOR_DIRECTIONS_HTML}}
+
+        {{TODAY_PREDICTION}}
+    </div>
+
+    <!-- ==================== SECTION 7: 题材机会选股 ==================== -->
+    <div class="section">
+        <div class="section-title">
+            <span class="icon">🎯</span>
+            七、题材机会
+            <span class="tag">3-5只标的 · 三层映射70分+技术面30分</span>
+        </div>
+
+        <div class="stock-cards">
+            {{STOCK_SELECTION}}
+        </div>
+    </div>
+
+    <!-- ==================== SECTION 8: 外部风险与操作策略 ==================== -->
+    <div class="section">
+        <div class="section-title">
+            <span class="icon">⚠️</span>
+            八、外部风险与操作策略
+        </div>
+
+        <!-- 风险提示（由 AI 分析文本中的 RISK_WARNINGS 填充） -->
+        {{RISK_WARNINGS}}
+
+        <div style="margin-bottom:18px;">
+            <div style="font-size:15px;font-weight:700;color:var(--blue-accent);margin-bottom:12px;">📋 操作纪律</div>
+            <!-- 🆕 操作纪律条目（从盘前策略吸收，结构化4条）-->
+            <ul class="discipline-list">
+                {{OPERATION_DISCIPLINE_ITEMS}}
+            </ul>
+            <!-- 操作策略补充 -->
+            {{OPERATION_STRATEGY}}
+        </div>
+    </div>
+
+    <!-- ==================== SECTION 8: 方法论沉淀 ==================== -->
+    <div class="section">
+        <div class="section-title">
+            <span class="icon">💡</span>
+            九、方法论沉淀
+            <span class="tag">第{{LEARNING_DAY}}天学习要点</span>
+        </div>
+        <!-- 方法论沉淀（由 AI 分析文本中的 STYLE_SUMMARY 填充） -->
+        {{STYLE_SUMMARY}}
+    </div>
+
+    <!-- ==================== FOOTER ==================== -->
+    <div class="footer">
+        <p>⚠️ 免责声明：本资料仅供学习研究使用，不构成投资建议。投资有风险，入市需谨慎。</p>
+        <p>报告生成时间：{{REPORT_DATETIME}} ｜ 数据截止：{{DATA_CUTOFF_DATETIME}}</p>
+        <p>数据来源：东方财富、财联社、新浪财经、同花顺、Yahoo Finance、CNBC</p>
+    </div>
+
+</div><!-- /container -->
+</body>
+</html>

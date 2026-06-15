@@ -1,0 +1,20 @@
+{
+  "name": "stock-methodology",
+  "description": "股市分析方法论知识库",
+  "last_updated": "2026-06-14",
+  "files": ["stock_morning_brief_guide.md", "stock_morning_brief_templates.md", "stock_selection_guide.md"],
+  "update_log": [
+    {
+      "date": "2026-06-14",
+      "description": "6.14周末学习素材方法论提炼：盘前分析方法新增新概念权威背书、强主线上游重估、排产验证景气、海外资金工具映射、AI存算连拆解；选股方法新增产业链映射选股、排产/订单验证、全球资金定价、学习素材股票不直接复用规则"
+    },
+    {
+      "date": "2026-06-14",
+      "description": "早报方法论P0优化：新增模块映射、事件时间线、情绪温度分类；模板参考抽离到stock_morning_brief_templates.md；主方法论压缩为规则框架"
+    },
+    {
+      "date": "2026-06-13",
+      "description": "新增业绩线逻辑分析、红利板块策略、跷跷板效应与风格切换等高级分析"
+    }
+  ]
+}

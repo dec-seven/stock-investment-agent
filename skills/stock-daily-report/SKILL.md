@@ -1,13 +1,12 @@
 ---
-name: closing-daily-report
+name: stock-daily-report
 description: |
   A股收盘日报生成。每个交易日收盘后，自动拉取行情数据、资金流向、行业表现等，
   结合 AI 分析生成 18 模块的完整 PDF 收盘报告。
   触发词：生成收盘报告、A股复盘、今日复盘、收盘日报、daily report
-  与 stock-analysis skill 的关系：
+  与其他 skill 的关系：
   - stock-analysis：单只股票/组合分析，侧重投资决策
-  - a-share-daily-report：全市场收盘复盘，侧重信息汇总与呈现
-agent_created: true
+  - stock-morning-brief：股市早评，数据获取逻辑可复用
 
 ---
 
@@ -22,7 +21,7 @@ agent_created: true
 ## 目录结构
 
 ```
-closing-daily-report/
+stock-daily-report/
 ├── SKILL.md                    # Skill 定义（本文件）
 ├── requirements.txt            # Python 依赖
 ├── scripts/
@@ -44,13 +43,13 @@ WorkBuddy 环境下有多个 Python 版本可用，**必须使用系统 Python 3
 
 ```bash
 # 1. 创建专用 venv（只需一次）
-/Library/Frameworks/Python.framework/Versions/3.9/bin/python3 -m venv /Users/DecSeven/.workbuddy/binaries/python/envs/closing-daily39
+python3 -m venv /path/to/venv
 
 # 2. 安装依赖（只需一次）
-/Users/DecSeven/.workbuddy/binaries/python/envs/closing-daily39/bin/pip install -r {{SKILL_DIR}}/requirements.txt
+/path/to/venv/bin/pip install -r {{SKILL_DIR}}/requirements.txt
 
 # 3. 后续所有 python3 调用都使用此路径
-PYTHON=/Users/DecSeven/.workbuddy/binaries/python/envs/closing-daily39/bin/python3
+PYTHON=/path/to/venv/bin/python3
 ```
 
 ### 依赖清单

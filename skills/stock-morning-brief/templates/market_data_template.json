@@ -1,0 +1,71 @@
+{
+  "report_date": "",
+  "generated_at": "",
+  "data_cutoff": "",
+  "yesterday": {
+    "indices": [
+      {"name": "上证指数", "close": null, "pct": null, "change": null, "high": null, "low": null, "source": "", "need_websearch": true},
+      {"name": "深证成指", "close": null, "pct": null, "change": null, "high": null, "low": null, "source": "", "need_websearch": true},
+      {"name": "创业板指", "close": null, "pct": null, "change": null, "high": null, "low": null, "source": "", "need_websearch": true},
+      {"name": "科创50",   "close": null, "pct": null, "change": null, "high": null, "low": null, "source": "", "need_websearch": true},
+      {"name": "北证50",   "close": null, "pct": null, "change": null, "high": null, "low": null, "source": "", "need_websearch": true},
+      {"name": "上证50",   "close": null, "pct": null, "change": null, "high": null, "low": null, "source": "", "need_websearch": true}
+    ],
+    "market_breadth": {
+      "up_count": null,
+      "down_count": null,
+      "flat_count": null,
+      "limit_up": null,
+      "limit_down": null,
+      "total_count": null,
+      "source": "",
+      "need_websearch": true
+    },
+    "turnover": {
+      "total": null,
+      "source": "",
+      "need_websearch": true
+    },
+    "north_bound": {
+      "net_inflow": null,
+      "source": "",
+      "need_websearch": true
+    },
+    "sectors": {
+      "top_gainers": [
+        {"name": "", "pct": null, "need_websearch": true},
+        {"name": "", "pct": null, "need_websearch": true},
+        {"name": "", "pct": null, "need_websearch": true},
+        {"name": "", "pct": null, "need_websearch": true},
+        {"name": "", "pct": null, "need_websearch": true}
+      ],
+      "top_losers": [
+        {"name": "", "pct": null, "need_websearch": true},
+        {"name": "", "pct": null, "need_websearch": true},
+        {"name": "", "pct": null, "need_websearch": true},
+        {"name": "", "pct": null, "need_websearch": true},
+        {"name": "", "pct": null, "need_websearch": true}
+      ]
+    }
+  },
+  "overnight_us": {
+    "dow":    {"name": "道琼斯",     "close": null, "pct": null, "source": "", "need_websearch": true},
+    "sp500":  {"name": "标普500",    "close": null, "pct": null, "source": "", "need_websearch": true},
+    "nasdaq": {"name": "纳斯达克",   "close": null, "pct": null, "source": "", "need_websearch": true},
+    "vix":    {"name": "VIX恐慌指数", "close": null, "pct": null, "source": "", "need_websearch": true},
+    "sox":    {"name": "费城半导体",  "close": null, "pct": null, "source": "", "need_websearch": true},
+    "nvda":   {"name": "英伟达",      "close": null, "pct": null, "source": "", "need_websearch": true},
+    "tsla":   {"name": "特斯拉",      "close": null, "pct": null, "source": "", "need_websearch": true},
+    "oil":    {"name": "WTI原油",     "close": null, "pct": null, "source": "", "need_websearch": true},
+    "gold":   {"name": "黄金",        "close": null, "pct": null, "source": "", "need_websearch": true}
+  },
+  "global_markets": {
+    "nikkei": {"name": "日经225",     "close": null, "pct": null, "source": "", "need_websearch": true},
+    "hsi":    {"name": "恒生指数",     "close": null, "pct": null, "source": "", "need_websearch": true},
+    "dxy":    {"name": "美元指数",     "close": null, "pct": null, "source": "", "need_websearch": true},
+    "cnh":    {"name": "离岸人民币",   "close": null, "pct": null, "source": "", "need_websearch": true}
+  },
+  "news_events": {
+    "need_websearch": true
+  }
+}
