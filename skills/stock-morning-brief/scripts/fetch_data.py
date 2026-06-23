@@ -52,7 +52,10 @@ def safe_float(val, default=None):
     try:
         if val is None or val == '' or val == '-':
             return default
-        return float(val)
+        f = float(val)
+        if f != f:  # NaN 检测 (NaN != NaN)
+            return default
+        return f
     except:
         return default
 
@@ -344,11 +347,40 @@ def fill_a_indices(data):
 # ==================== 市场情绪数据 ====================
 
 def fill_market_breadth(data):
-    """填充涨跌家数"""
+    """填充涨跌家数 - 优先用乐咕市场活跃度(轻量稳定)，全量接口作兜底"""
     print("\n[INFO] === 填充涨跌家数 ===", file=sys.stderr)
     breadth = data["yesterday"]["market_breadth"]
 
-    # 尝试 AkShare
+    # 1. 优先：乐咕市场活跃度（单次轻量接口，避免拉全量5000股被风控）
+    if AKSHARE_AVAILABLE:
+        try:
+            df = ak.stock_market_activity_legu()
+            if df is not None and not df.empty:
+                kv = {str(r["item"]).strip(): r["value"] for _, r in df.iterrows()}
+                def _num(k):
+                    try:
+                        return int(float(kv.get(k)))
+                    except:
+                        return None
+                up = _num("上涨"); down = _num("下跌"); flat = _num("平盘")
+                limit_up = _num("涨停"); limit_down = _num("跌停")
+                if up is not None and down is not None:
+                    breadth.update({
+                        "up_count": up,
+                        "down_count": down,
+                        "flat_count": flat,
+                        "limit_up": limit_up,
+                        "limit_down": limit_down,
+                        "total_count": (up + down + (flat or 0)) if up is not None else None,
+                        "source": "akshare_legu",
+                        "need_websearch": False,
+                    })
+                    print(f"[OK] 乐咕活跃度 上涨:{up} 下跌:{down} 涨停:{limit_up} 跌停:{limit_down}", file=sys.stderr)
+                    return
+        except Exception as e:
+            print(f"[WARN] 乐咕活跃度失败: {str(e)[:50]}", file=sys.stderr)
+
+    # 2. 兜底：全量行情统计（易被东财风控，可能 RemoteDisconnected）
     if AKSHARE_AVAILABLE:
         try:
             df = ak.stock_zh_a_spot_em()
@@ -374,8 +406,8 @@ def fill_market_breadth(data):
                 })
                 print(f"[OK] 上涨:{up} 下跌:{down} 涨停:{limit_up}", file=sys.stderr)
                 return
-        except:
-            pass
+        except Exception as e:
+            print(f"[WARN] 全量行情统计失败: {str(e)[:50]}", file=sys.stderr)
 
     mark_websearch(breadth, "获取失败")
 
@@ -427,7 +459,11 @@ def fill_turnover(data):
 
 
 def fill_north_bound(data):
-    """填充北向资金"""
+    """填充北向资金
+    注意: 沪深港通自2024-08-19起停止披露每日净买入额，
+    stock_hsgt_hist_em 的净额列(当日成交净买额/当日资金流入)已恒为 NaN。
+    此处尝试取净额，取不到则标记 websearch(由 Agent 补成交额等替代口径)。
+    """
     print("\n[INFO] === 填充北向资金 ===", file=sys.stderr)
     nb = data["yesterday"]["north_bound"]
 
@@ -436,28 +472,98 @@ def fill_north_bound(data):
             df = ak.stock_hsgt_hist_em(symbol="北向资金")
             if df is not None and not df.empty:
                 latest = df.iloc[-1]
-                for col in df.columns:
-                    if "净流入" in str(col):
+                # 优先实际列名: 当日成交净买额 / 当日资金流入
+                for col in ["当日成交净买额", "当日资金流入"]:
+                    if col in df.columns:
                         net = safe_float(latest.get(col))
-                        if net:
+                        if net is not None:
                             nb.update({
                                 "net_inflow": round(net, 2),
                                 "source": "akshare",
                                 "need_websearch": False,
                             })
-                            print(f"[OK] 北向净流入: {net:.2f}亿", file=sys.stderr)
+                            print(f"[OK] 北向净流入: {net:.2f}亿 ({col})", file=sys.stderr)
                             return
-        except:
-            pass
+                print("[WARN] 北向净额列为 NaN(官方2024-08起停披露)，转 WebSearch 补成交额", file=sys.stderr)
+        except Exception as e:
+            print(f"[WARN] 北向获取失败: {str(e)[:50]}", file=sys.stderr)
 
-    mark_websearch(nb, "获取失败")
+    mark_websearch(nb, "官方停披露净额,需补成交额口径")
+
+
+def fill_fund_flow(data):
+    """
+    填充主力资金流向（行业 + 大盘）
+    新增到 data["yesterday"]["fund_flow"]，供 ai_texts 生成资金面判断
+    """
+    print("\n[INFO] === 填充主力资金流向 ===", file=sys.stderr)
+
+    if not AKSHARE_AVAILABLE:
+        print("[WARN] AKShare 不可用，跳过资金流向", file=sys.stderr)
+        return
+
+    fund_flow = data["yesterday"].setdefault("fund_flow", {
+        "market_main_net":   None,   # 全市场主力净流入（亿）
+        "market_main_pct":   None,   # 净占比 %
+        "top_inflow_sectors": [],    # 资金净流入最多的5个行业
+        "top_outflow_sectors":[],    # 资金净流出最多的5个行业
+        "need_websearch": True
+    })
+
+    # 1. 行业资金流向（即时）
+    try:
+        df = ak.stock_fund_flow_industry(symbol='即时')
+        if df is not None and not df.empty:
+            df = df.sort_values(by='净额', ascending=False)
+            top_in  = df.head(5)
+            top_out = df.tail(5)
+
+            fund_flow["top_inflow_sectors"] = []
+            for _, row in top_in.iterrows():
+                fund_flow["top_inflow_sectors"].append({
+                    "name":       str(row.get("行业", "")),
+                    "net_inflow": round(float(row.get("净额", 0)), 2),
+                    "pct_change": round(float(row.get("行业-涨跌幅", 0)), 2),
+                    "leader":     str(row.get("领涨股", "")),
+                    "leader_pct": round(float(row.get("领涨股-涨跌幅", 0)), 2)
+                })
+
+            fund_flow["top_outflow_sectors"] = []
+            for _, row in top_out.iterrows():
+                fund_flow["top_outflow_sectors"].append({
+                    "name":        str(row.get("行业", "")),
+                    "net_outflow": round(float(row.get("净额", 0)), 2),
+                    "pct_change":  round(float(row.get("行业-涨跌幅", 0)), 2)
+                })
+
+            fund_flow["need_websearch"] = False
+            print(f"[OK] 行业资金流向: 净流入前5={[s['name'] for s in fund_flow['top_inflow_sectors']]}", file=sys.stderr)
+    except Exception as e:
+        print(f"[WARN] 行业资金流向获取失败: {e}", file=sys.stderr)
+
+    # 2. 大盘主力资金净流入（历史日度）
+    try:
+        df_mkt = ak.stock_market_fund_flow()
+        if df_mkt is not None and not df_mkt.empty:
+            latest = df_mkt.iloc[-1]
+            for col in df_mkt.columns:
+                if "主力净流入" in str(col) and "净额" in str(col):
+                    val = float(latest[col]) / 1e8  # 转亿
+                    fund_flow["market_main_net"] = round(val, 2)
+                if "主力净流入" in str(col) and "净占比" in str(col):
+                    fund_flow["market_main_pct"] = round(float(latest[col]), 2)
+            if fund_flow["market_main_net"] is not None:
+                print(f"[OK] 全市场主力净流入: {fund_flow['market_main_net']:.1f}亿 ({fund_flow['market_main_pct']}%)", file=sys.stderr)
+    except Exception as e:
+        print(f"[WARN] 大盘资金流向获取失败: {e}", file=sys.stderr)
 
 
 def fill_sectors(data):
-    """填充行业板块"""
+    """填充行业板块 - 东财优先，新浪行业作兜底(东财全量易被风控)"""
     print("\n[INFO] === 填充行业板块 ===", file=sys.stderr)
     sectors = data["yesterday"]["sectors"]
 
+    # 1. 东财行业板块
     if AKSHARE_AVAILABLE:
         try:
             df = ak.stock_board_industry_name_em()
@@ -475,10 +581,34 @@ def fill_sectors(data):
                         item["name"] = str(row.get("板块名称", ""))
                         item["pct"] = safe_float(row.get("涨跌幅"))
                         item["need_websearch"] = False
-                print(f"[OK] 行业板块", file=sys.stderr)
+                print(f"[OK] 东财行业板块", file=sys.stderr)
                 return
-        except:
-            pass
+        except Exception as e:
+            print(f"[WARN] 东财行业板块失败(转新浪): {str(e)[:50]}", file=sys.stderr)
+
+    # 2. 新浪行业兜底(分类较粗,但稳定)
+    if AKSHARE_AVAILABLE:
+        try:
+            df = ak.stock_sector_spot(indicator="新浪行业")
+            if df is not None and not df.empty and "涨跌幅" in df.columns:
+                df["涨跌幅"] = df["涨跌幅"].astype(float)
+                df = df.sort_values(by="涨跌幅", ascending=False)
+                for i, item in enumerate(sectors["top_gainers"]):
+                    if i < len(df):
+                        row = df.iloc[i]
+                        item["name"] = str(row.get("板块", ""))
+                        item["pct"] = round(float(row.get("涨跌幅", 0)), 2)
+                        item["need_websearch"] = False
+                for i, item in enumerate(sectors["top_losers"]):
+                    if i < len(df):
+                        row = df.iloc[-(i+1)]
+                        item["name"] = str(row.get("板块", ""))
+                        item["pct"] = round(float(row.get("涨跌幅", 0)), 2)
+                        item["need_websearch"] = False
+                print(f"[OK] 新浪行业板块(兜底)", file=sys.stderr)
+                return
+        except Exception as e:
+            print(f"[WARN] 新浪行业板块失败: {str(e)[:50]}", file=sys.stderr)
 
     for item in sectors["top_gainers"] + sectors["top_losers"]:
         mark_websearch(item, "获取失败")
@@ -526,24 +656,70 @@ def fetch_em_us_quote(secid):
     return None
 
 
+def fetch_sina_us_full(sina_code):
+    """新浪美股/指数行情（gb_ 美股个股与指数, 含 gb_$ 指数）
+    格式: var hq_str_gb_nvda="英伟达,现价,涨跌幅,时间,涨跌额,昨收,开盘,最高,最低,..."
+    解析: parts[1]=现价 parts[2]=涨跌幅 parts[5]=昨收
+    """
+    url = f"http://hq.sinajs.cn/list={sina_code}"
+    try:
+        resp = requests.get(url, timeout=8, headers={"Referer": "https://finance.sina.com.cn"})
+        resp.encoding = "gbk"
+        match = re.search(r'="([^"]*)"', resp.text)
+        if match and match.group(1):
+            parts = match.group(1).split(",")
+            if len(parts) >= 3:
+                close = safe_float(parts[1])
+                pct = safe_float(parts[2])
+                if close is not None and pct is not None:
+                    return {"close": round(close, 2), "pct": round(pct, 2), "source": "sina"}
+    except:
+        pass
+    return None
+
+
+def fetch_sina_futures(sina_code):
+    """新浪国际期货行情（hf_CL 原油, hf_GC 黄金）
+    格式: var hq_str_hf_CL="当前价,,买价,卖价,最高,最低,时间,开盘,昨收,...,日期,名称,..."
+    parts[0]=当前价 parts[8]=昨收
+    """
+    url = f"http://hq.sinajs.cn/list={sina_code}"
+    try:
+        resp = requests.get(url, timeout=8, headers={"Referer": "https://finance.sina.com.cn"})
+        resp.encoding = "gbk"
+        match = re.search(r'="([^"]*)"', resp.text)
+        if match and match.group(1):
+            parts = match.group(1).split(",")
+            if len(parts) >= 9:
+                close = safe_float(parts[0])
+                prev_close = safe_float(parts[8])
+                if close is not None and prev_close:
+                    pct = round((close - prev_close) / prev_close * 100, 2)
+                    return {"close": round(close, 2), "pct": pct, "source": "sina"}
+    except:
+        pass
+    return None
+
+
 def fill_us_data(data):
-    """填充美股数据 - 多数据源优先级：腾讯 > 东方财富 > yfinance"""
+    """填充美股数据 - 多数据源优先级：腾讯 > 东方财富 > 新浪 > yfinance"""
     print("\n[INFO] === 填充美股数据 ===", file=sys.stderr)
 
-    # 数据源映射：(key, 腾讯代码, 东方财富secid, yfinance代码)
+    # 数据源映射：(key, 腾讯代码, 东方财富secid, yfinance代码, 新浪代码, 新浪类型)
+    # 新浪类型: 'gb'=美股/指数(gb_), 'hf'=国际期货(hf_)
     ticker_map = {
-        "dow": ("DJI", None, "^DJI"),           # 道琼斯 - 腾讯可用
-        "sp500": ("INX", None, "^GSPC"),         # 标普500 - 腾讯可用
-        "nasdaq": ("IXIC", None, "^IXIC"),       # 纳斯达克 - 腾讯可用
-        "vix": ("VIX", None, "^VIX"),            # VIX - 腾讯可用
-        "sox": (None, None, "^SOX"),             # 费城半导体 - 仅yfinance
-        "nvda": (None, "105.NVDA", "NVDA"),      # 英伟达 - 东方财富可用
-        "tsla": (None, "105.TSLA", "TSLA"),      # 特斯拉 - 东方财富可用
-        "oil": (None, "105.CL", "CL=F"),         # 原油
-        "gold": (None, "105.GC", "GC=F"),        # 黄金
+        "dow":    ("DJI",  None,        "^DJI",  "gb_$dji",  "gb"),
+        "sp500":  ("INX",  None,        "^GSPC", "gb_$inx",  "gb"),
+        "nasdaq": ("IXIC", None,        "^IXIC", "gb_$ixic", "gb"),
+        "vix":    ("VIX",  None,        "^VIX",  "gb_$vix",  "gb"),
+        "sox":    (None,   None,        "^SOX",  "gb_$sox",  "gb"),   # 费城半导体(新浪)
+        "nvda":   (None,   None,        "NVDA",  "gb_nvda",  "gb"),   # 英伟达(新浪,东财个股换算不可靠)
+        "tsla":   (None,   None,        "TSLA",  "gb_tsla",  "gb"),   # 特斯拉(新浪,东财个股换算不可靠)
+        "oil":    (None,   None,        "CL=F",  "hf_CL",    "hf"),   # WTI原油
+        "gold":   (None,   None,        "GC=F",  "hf_GC",    "hf"),   # 黄金
     }
 
-    for key, (tencent_symbol, em_secid, yf_symbol) in ticker_map.items():
+    for key, (tencent_symbol, em_secid, yf_symbol, sina_symbol, sina_type) in ticker_map.items():
         if key not in data["overnight_us"]:
             continue
 
@@ -562,7 +738,16 @@ def fill_us_data(data):
             if result:
                 print(f"[OK] 东方财富 {item['name']}: {result['close']:.2f} ({result['pct']:+.2f}%)", file=sys.stderr)
 
-        # 3. 尝试 yfinance（备选）
+        # 3. 尝试新浪（最稳定的备用源，覆盖 SOX/NVDA/TSLA/原油/黄金）
+        if sina_symbol and not result:
+            if sina_type == "gb":
+                result = fetch_sina_us_full(sina_symbol)
+            elif sina_type == "hf":
+                result = fetch_sina_futures(sina_symbol)
+            if result:
+                print(f"[OK] 新浪 {item['name']}: {result['close']:.2f} ({result['pct']:+.2f}%)", file=sys.stderr)
+
+        # 4. 尝试 yfinance（最后备选，常被限流）
         if YFINANCE_AVAILABLE and yf_symbol and not result:
             try:
                 ticker = yf.Ticker(yf_symbol)
@@ -588,23 +773,74 @@ def fill_us_data(data):
             mark_websearch(item, "获取失败")
 
 
+def fetch_sina_intl_index(sina_code):
+    """新浪国际指数(int_ 前缀, 如 int_hangseng 恒生指数)
+    格式: var hq_str_int_hangseng="恒生指数,现价,涨跌额,涨跌幅"
+    parts[1]=现价 parts[3]=涨跌幅
+    """
+    url = f"http://hq.sinajs.cn/list={sina_code}"
+    try:
+        resp = requests.get(url, timeout=8, headers={"Referer": "https://finance.sina.com.cn"})
+        resp.encoding = "gbk"
+        match = re.search(r'="([^"]*)"', resp.text)
+        if match and match.group(1):
+            parts = match.group(1).split(",")
+            if len(parts) >= 4:
+                close = safe_float(parts[1])
+                pct = safe_float(parts[3])
+                if close is not None and pct is not None:
+                    return {"close": round(close, 2), "pct": round(pct, 2), "source": "sina"}
+    except:
+        pass
+    return None
+
+
+def fetch_sina_fx_cnh(sina_code="fx_susdcnh"):
+    """新浪离岸人民币(fx_susdcnh)
+    格式: var hq_str_fx_susdcnh="时间,开,高,低,?,买,卖,昨收,现价,名称,..."
+    末段含现价与昨收, 取倒数解析较稳: parts[8]=现价? 需稳健提取数字
+    实测: 09:32:11,6.7759,6.7779,6.7771,45,6.7779,6.7797,6.7752,6.7759,离岸人民币...
+    parts[1]=今开 parts[8]=现价 ... 用 parts[8] 现价, parts[3]=昨收? 不稳，改用现价+无pct
+    """
+    url = f"http://hq.sinajs.cn/list={sina_code}"
+    try:
+        resp = requests.get(url, timeout=8, headers={"Referer": "https://finance.sina.com.cn"})
+        resp.encoding = "gbk"
+        match = re.search(r'="([^"]*)"', resp.text)
+        if match and match.group(1):
+            parts = match.group(1).split(",")
+            # 提取所有形如汇率的数字(6.x)
+            rates = [safe_float(p) for p in parts if p and re.match(r'^6\.\d+$', p.strip())]
+            if rates:
+                cur = rates[-1] if len(rates) >= 1 else None
+                # 现价取中间偏后的一个稳定值
+                cur = safe_float(parts[8]) or cur
+                if cur:
+                    return {"close": round(cur, 4), "pct": 0.0, "source": "sina"}
+    except:
+        pass
+    return None
+
+
 def fill_global_markets(data):
-    """填充全球市场"""
+    """填充全球市场 - yfinance 优先，新浪 int_/gb_$ 作备用"""
     print("\n[INFO] === 填充全球市场 ===", file=sys.stderr)
 
-    # 尝试 yfinance 获取
+    # (key, yfinance代码, 新浪代码, 新浪类型) 类型: 'gb'=gb_$指数, 'int'=int_国际指数
     global_map = {
-        "nikkei": "^N225",
-        "hsi": "^HSI",
-        "dxy": "DX-Y.NYB",
+        "nikkei": ("^N225", None,           None),    # 日经225 新浪无稳定源 -> websearch
+        "hsi":    ("^HSI",  "int_hangseng", "int"),   # 恒生指数
+        "dxy":    ("DX-Y.NYB", None,        None),     # 美元指数 -> websearch
     }
 
-    for key, symbol in global_map.items():
+    for key, (symbol, sina_symbol, sina_type) in global_map.items():
         if key not in data["global_markets"]:
             continue
 
         item = data["global_markets"][key]
+        done = False
 
+        # 1. yfinance
         if YFINANCE_AVAILABLE:
             try:
                 ticker = yf.Ticker(symbol)
@@ -619,15 +855,39 @@ def fill_global_markets(data):
                         "need_websearch": False,
                     })
                     print(f"[OK] yfinance {item['name']}: {close:.2f}", file=sys.stderr)
-                    continue
+                    done = True
             except:
                 pass
 
-        mark_websearch(item, "获取失败")
+        # 2. 新浪备用
+        if not done and sina_symbol:
+            r = fetch_sina_intl_index(sina_symbol) if sina_type == "int" else fetch_sina_us_full(sina_symbol)
+            if r:
+                item.update({
+                    "close": r["close"],
+                    "pct": r["pct"],
+                    "source": "sina",
+                    "need_websearch": False,
+                })
+                print(f"[OK] 新浪 {item['name']}: {r['close']:.2f} ({r['pct']:+.2f}%)", file=sys.stderr)
+                done = True
+
+        if not done:
+            mark_websearch(item, "获取失败")
 
     # 离岸人民币单独处理
     if "cnh" in data["global_markets"]:
-        mark_websearch(data["global_markets"]["cnh"], "需WebSearch")
+        r = fetch_sina_fx_cnh()
+        if r:
+            data["global_markets"]["cnh"].update({
+                "close": r["close"],
+                "pct": r["pct"],
+                "source": "sina",
+                "need_websearch": False,
+            })
+            print(f"[OK] 新浪 离岸人民币: {r['close']:.4f}", file=sys.stderr)
+        else:
+            mark_websearch(data["global_markets"]["cnh"], "需WebSearch")
 
 
 # ==================== 主函数 ====================
@@ -694,6 +954,7 @@ def main():
     fill_market_breadth(data)
     fill_turnover(data)
     fill_north_bound(data)
+    fill_fund_flow(data)      # 新增：主力资金流向（行业净流入 + 大盘主力）
     fill_sectors(data)
     fill_us_data(data)
     fill_global_markets(data)

@@ -32,6 +32,9 @@
   .index-card .change.down { color: #00dd00; }
   .index-card .prediction { font-size: 12px; color: #8fa4c0; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #1e3a5f; }
   .index-card .prediction .label { color: #6a8fbf; }
+  .index-card .prediction.correct { color: #00dd00; }
+  .index-card .prediction.wrong { color: #ff4444; }
+  .index-card .prediction:not(:first-of-type) { border-top: none; padding-top: 2px; margin-top: 2px; }
 
   /* 早报预测 vs 实际 */
   .vs-table { width: 100%; border-collapse: collapse; }

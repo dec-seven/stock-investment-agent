@@ -179,6 +179,25 @@ def deploy_to_cloudflare(html_file, project_name, keep_history=True):
     else:
         print(f"[WARN] 未找到股票跟踪页，已检查: {', '.join(str(p) for p in tracker_candidates)}", file=sys.stderr)
 
+    # 6.5 同步收盘复盘页面（如存在）—— 独立 /review/ 路径，不占用早报根路径
+    # /review/ → 最新复盘；/review/YYYY-MM-DD/ → 指定日期复盘
+    review_html = None
+    if date_str:
+        review_candidates = [
+            skill_dir / "tmp" / f"review_{date_str}.html",
+            workspace_dir / "tmp" / f"review_{date_str}.html",
+        ]
+        review_html = next((p for p in review_candidates if p.exists()), None)
+    if review_html:
+        review_latest_dir = publish_dir / "review"
+        review_latest_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(review_html, review_latest_dir / "index.html")
+        if keep_history:
+            review_dated_dir = review_latest_dir / date_str
+            review_dated_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(review_html, review_dated_dir / "index.html")
+        print(f"[OK] 复盘页已复制: {review_html} → {review_latest_dir / 'index.html'}", file=sys.stderr)
+
     # 7. 执行部署命令
     print(f"\n[INFO] 部署到 Cloudflare Pages: {project_name}", file=sys.stderr)
     print(f"[INFO] 部署目录: {tmpdir}", file=sys.stderr)
@@ -213,6 +232,9 @@ def deploy_to_cloudflare(html_file, project_name, keep_history=True):
             dated_url = f"{production_domain}/{date_str}/" if keep_history else latest_url
             tracker_exists = tracker_html is not None and tracker_html.exists()
             tracker_url = f"{production_domain}/stock-tracker/" if tracker_exists else ""
+            review_exists = review_html is not None and review_html.exists()
+            review_url = f"{production_domain}/review/" if review_exists else ""
+            review_dated_url = f"{production_domain}/review/{date_str}/" if review_exists and keep_history else review_url
             deployment_url = f"{deployment_domain}/" if deployment_domain else ""
             deployment_dated_url = f"{deployment_domain}/{date_str}/" if deployment_domain and keep_history else deployment_url
             deployment_tracker_url = f"{deployment_domain}/stock-tracker/" if deployment_domain and tracker_exists else ""
@@ -232,6 +254,8 @@ def deploy_to_cloudflare(html_file, project_name, keep_history=True):
                 "latest_url": latest_url,
                 "dated_url": dated_url,
                 "tracker_url": tracker_url,
+                "review_url": review_url,
+                "review_dated_url": review_dated_url,
                 "deployment_url": deployment_url,
                 "deployment_dated_url": deployment_dated_url,
                 "deployment_tracker_url": deployment_tracker_url,

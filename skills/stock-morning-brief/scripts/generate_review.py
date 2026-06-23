@@ -66,13 +66,27 @@ def compare_indices(prediction, closing):
         
         correct = predicted_up == actual_up
         
+        # 判断上证区间是否命中（仅上证指数）
+        actual_close = idx.get("close", 0)
+        range_hit = None  # None=非上证或无区间; True=命中; False=未命中
+        if name == "上证指数" and sh_range_low and sh_range_high:
+            try:
+                low = float(sh_range_low)
+                high = float(sh_range_high)
+                range_hit = (low <= actual_close <= high)
+            except (ValueError, TypeError):
+                range_hit = None
+        
         result = {
             "name": name,
-            "actual_close": idx.get("close", 0),
+            "actual_close": actual_close,
             "actual_change_pct": actual_pct,
             "predicted_direction": direction,
             "correct": correct,
             "sh_range": f"{sh_range_low}-{sh_range_high}" if name == "上证指数" else "",
+            "sh_range_low": sh_range_low if name == "上证指数" else "",
+            "sh_range_high": sh_range_high if name == "上证指数" else "",
+            "range_hit": range_hit,
         }
         results.append(result)
     
@@ -138,19 +152,39 @@ def generate_review_html(date_str, prediction, closing_data, index_comparison, s
         direction_class = "up" if up else "down"
         symbol = "+" if up else ""
         
-        # 预测是否正确
-        verdict = "✅ 预测正确" if idx["correct"] else "❌ 预测错误"
-        verdict_class = "correct" if idx["correct"] else "wrong"
+        # 方向判断（独立标记）
+        dir_verdict = "✅ 对" if idx["correct"] else "❌ 错"
+        dir_verdict_class = "correct" if idx["correct"] else "wrong"
         
-        sh_range_str = f"<div class='prediction'>📊 早报预测区间: {idx['sh_range']}</div>" if idx["sh_range"] else ""
+        # 区间判断（独立标记，仅上证有）
+        range_line = ""
+        if idx["sh_range"]:
+            rh = idx["range_hit"]
+            if rh is True:
+                range_verdict = "✅ 命中"
+                range_verdict_class = "correct"
+            elif rh is False:
+                # 判断超上限还是跌破下限
+                try:
+                    if idx["actual_close"] > float(idx["sh_range_high"]):
+                        range_verdict = f"❌ 实际{idx['actual_close']:.0f}超上限"
+                    else:
+                        range_verdict = f"❌ 实际{idx['actual_close']:.0f}破下限"
+                except (ValueError, TypeError):
+                    range_verdict = "❌ 未命中"
+                range_verdict_class = "wrong"
+            else:
+                range_verdict = "—"
+                range_verdict_class = ""
+            range_line = f"""
+          <div class="prediction {range_verdict_class}">区间: {idx['sh_range']} → {range_verdict}</div>"""
         
         index_cards_html += f"""
         <div class="index-card">
           <div class="name">{idx['name']}</div>
           <div class="price {direction_class}">{idx['actual_close']:.2f}</div>
           <div class="change {direction_class}">{symbol}{idx['actual_change_pct']:.2f}%</div>
-          {sh_range_str}
-          <div class="prediction {verdict_class}">早报预测: {idx['predicted_direction']} → {verdict}</div>
+          <div class="prediction {dir_verdict_class}">方向: {idx['predicted_direction']} → {dir_verdict}</div>{range_line}
         </div>
         """
     template = template.replace("{{MARKET_INDEX_CARDS}}", index_cards_html)
@@ -184,12 +218,21 @@ def generate_review_html(date_str, prediction, closing_data, index_comparison, s
                prediction.get("market_prediction", {}).get("sh_range_high", "")
     if sh_idx:
         sh_actual = f"{sh_idx['actual_close']:.2f}"
-        sh_in_range = (sh_idx['actual_close'] >= float(prediction.get("market_prediction", {}).get("sh_range_low", 0) or 0) and
-                       sh_idx['actual_close'] <= float(prediction.get("market_prediction", {}).get("sh_range_high", 0) or 99999))
-        range_class = "correct" if sh_in_range else "partial"
+        sh_low = float(prediction.get("market_prediction", {}).get("sh_range_low", 0) or 0)
+        sh_high = float(prediction.get("market_prediction", {}).get("sh_range_high", 0) or 99999)
+        sh_in_range = (sh_idx['actual_close'] >= sh_low and sh_idx['actual_close'] <= sh_high)
+        if sh_in_range:
+            range_class = "correct"
+            range_text = "✅ 在区间内"
+        elif sh_idx['actual_close'] > sh_high:
+            range_class = "wrong"
+            range_text = "❌ 超上限"
+        else:
+            range_class = "wrong"
+            range_text = "❌ 破下限"
         pred_actual_html += f"""
           <tr>
-            <td>上证区间</td><td>{sh_range}</td><td>{sh_actual}</td><td class="{range_class}">{"✅ 在区间内" if sh_in_range else "⚠️ 超出区间"}</td>
+            <td>上证区间</td><td>{sh_range}</td><td>{sh_actual}</td><td class="{range_class}">{range_text}</td>
           </tr>
         """
     
@@ -241,7 +284,7 @@ def generate_review_html(date_str, prediction, closing_data, index_comparison, s
       </div>
       <div class="summary-row">
         <span class="label">上证区间预测</span>
-        <span class="value {range_class}">{"正确 ✅" if sh_in_range else "部分正确 ⚠️"}</span>
+        <span class="value {range_class}">{range_text if sh_idx else "—"}</span>
       </div>
       <div class="summary-row">
         <span class="label">选股准确率</span>
