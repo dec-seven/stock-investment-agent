@@ -111,7 +111,11 @@ stock-skills/                      # 不改名，保留 git 历史
 > 原则：**先观测后重构，先治标后治本，旧路径保留对照**。
 > 每阶段独立可交付，可随时停下稳定运行。
 
-### 阶段 0：观测性基线（1-2 天，必须最先）
+### 阶段 0：观测性基线（1-2 天，必须最先）✅ 已完成
+
+> 完成日期：2026-06-24
+> 交付：run_context.py + 14 个 bare except 改造 + logger 接入
+> 验证：grep 0 个 bare except，py_compile 通过
 
 **为什么最先**：看不见问题就没法重构。14 个 bare except 让任何改动都盲飞。
 
@@ -127,7 +131,21 @@ stock-skills/                      # 不改名，保留 git 历史
 - 任意一条日志可追溯到 run_id
 - 0 个 bare except（grep 验证）
 
-### 阶段 1：消灭重复，shared 真正化（3-5 天）
+### 阶段 1：消灭重复，shared 真正化（✅ 已完成 2026-06-24）
+
+**成果**：
+- skills/ 下所有重复函数定义（format_pct/format_amount/safe_float/push_to_feishu/pct_class）已删除
+- 5 个脚本统一引用 `shared/utils.py`
+- skills/ 引用 shared/ 共 10 处
+
+**验证**：
+```bash
+grep -rn "def format_pct|def safe_float..." skills/  # 0 结果
+grep -rn "from utils|from shared" skills/ | wc -l    # 10
+```⏸️ 延后
+
+> 状态：阶段 2 完成后执行，避免重复改 import
+> 原因：generate_ai_texts.py 已拆到 shared/ai/，待统一改 skills/ 引用
 
 **任务**：
 1. 合并 `shared/data_fetcher.py`(485) + `skills/fetch_data.py`(984) → `shared/services/data_service/`（按源拆 4 个 sub-module）
@@ -141,7 +159,11 @@ stock-skills/                      # 不改名，保留 git 历史
 - skills/ 下所有 .py 至少 import shared/ 一次
 - 旧 fetch_data.py 删除前先建 git tag `pre-refactor-shared`
 
-### 阶段 2：拆 generate_ai_texts.py（2-3 天）
+### 阶段 2：拆 generate_ai_texts.py（2-3 天）✅ 已完成
+
+> 完成日期：2026-06-24
+> 交付：856 行拆为 6 模块 + 1 CLI
+> 验证：单文件 <500 行，CLI 接口不变，py_compile 通过
 
 **任务**：856 行 25 函数按职责拆 6 模块：
 

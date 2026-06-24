@@ -74,6 +74,10 @@ class StructuredLogger:
     
     def error(self, message: str, exc_info=False, **kwargs):
         self._log(logging.ERROR, message, kwargs, exc_info=exc_info)
+
+    def exception(self, message: str, **kwargs):
+        # 兼容标准 logging.exception：记录为 ERROR 并附带异常堆栈
+        self._log(logging.ERROR, message, kwargs, exc_info=True)
     
     def _log(self, level: int, message: str, data: Dict, exc_info=False):
         """记录日志"""

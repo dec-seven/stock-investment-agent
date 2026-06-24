@@ -17,6 +17,12 @@ import re
 import tempfile
 from datetime import datetime, timedelta
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'shared'))
+from logger import get_logger
+from run_context import get_run_id
+from utils import format_pct, format_amount, pct_class, push_to_feishu
+logger = get_logger('generate_report')
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 WORKSPACE_DIR = os.path.abspath(os.path.join(SKILL_DIR, "..", ".."))
@@ -39,7 +45,7 @@ def load_env_file(path):
                 if key and key not in os.environ:
                     os.environ[key] = value
     except Exception as e:
-        print(f"[WARN] 加载环境变量文件失败 {path}: {e}", file=sys.stderr)
+        logger.exception(f"加载环境变量文件失败 {path}: {e}")
 
 
 # 飞书推送配置：优先系统环境变量，其次读取 workspace/skill 本地 .env（已 gitignore）
@@ -51,7 +57,7 @@ for env_path in [
 
 FEISHU_USER_OPEN_ID = os.environ.get("FEISHU_USER_OPEN_ID")
 if not FEISHU_USER_OPEN_ID:
-    print("[WARN] FEISHU_USER_OPEN_ID 未设置，飞书推送功能将被禁用", file=sys.stderr)
+    logger.info("[WARN] FEISHU_USER_OPEN_ID 未设置，飞书推送功能将被禁用")
 LARK_CLI = "lark-cli"
 
 
@@ -62,14 +68,14 @@ def load_json_safe(path):
     try:
         return json.loads(raw)
     except json.JSONDecodeError as e:
-        print(f"[WARN] JSON 解析失败 ({path}): {e}", file=sys.stderr)
+        logger.info(f"[WARN] JSON 解析失败 ({path}): {e}")
         try:
             fixed = _fix_inline_quotes(raw)
             result = json.loads(fixed)
-            print("[OK] 自动修复成功", file=sys.stderr)
+            logger.info("[OK] 自动修复成功")
             return result
         except json.JSONDecodeError as e2:
-            print(f"[ERROR] 自动修复失败: {e2}", file=sys.stderr)
+            logger.info(f"[ERROR] 自动修复失败: {e2}")
             raise
 
 
@@ -105,33 +111,6 @@ def _fix_inline_quotes(raw):
     fixed = re.sub(r'([\u4e00-\u9fff])"([^"]*?)"([\u4e00-\u9fff])',
                    r'\1\u300c\2\u300d\3', fixed)
     return fixed
-
-
-def format_pct(val):
-    """格式化涨跌幅"""
-    if val is None:
-        return "—"
-    if val > 0:
-        return f"+{val:.2f}%"
-    if val < 0:
-        return f"{val:.2f}%"
-    return "0.00%"
-
-
-def format_amount(val):
-    """格式化金额（亿）"""
-    if val is None:
-        return "—"
-    if abs(val) >= 10000:
-        return f"{val/10000:.2f}万亿"
-    return f"{val:.2f}亿"
-
-
-def pct_class(pct):
-    """涨跌样式类"""
-    if pct is None:
-        return ""
-    return "up" if pct >= 0 else "down"
 
 
 def us_reason_fallback(key, item, us_data):
@@ -614,9 +593,9 @@ def html_to_pdf(html_path, pdf_path):
         from weasyprint import HTML
         HTML(filename=html_path).write_pdf(pdf_path)
         return True
-    except Exception:
-        pass
-    
+    except Exception as e:
+        logger.exception(f"WeasyPrint PDF 生成失败: {e}")
+
     # 回退到 Chrome headless
     chrome = shutil.which("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
     if not chrome:
@@ -630,10 +609,10 @@ def html_to_pdf(html_path, pdf_path):
                 check=True, timeout=60,
             )
             return True
-        except Exception:
-            pass
-    
-    print("[WARN] PDF 生成失败，仅保存 HTML", file=sys.stderr)
+        except Exception as e:
+            logger.exception(f"Chrome headless PDF 生成失败: {e}")
+
+    logger.info("[WARN] PDF 生成失败，仅保存 HTML")
     return False
 
 
@@ -658,7 +637,7 @@ def update_stock_tracker(args, data):
                 break
 
     if not analysis_path or not os.path.exists(analysis_path):
-        print("[WARN] 未找到 llm_analysis.json，跳过股票跟踪更新", file=sys.stderr)
+        logger.info("[WARN] 未找到 llm_analysis.json，跳过股票跟踪更新")
         return
 
     tracker_json = args.stock_tracker_json or os.path.join(SKILL_DIR, "data", "stock_selection_tracker.json")
@@ -692,121 +671,13 @@ def update_stock_tracker(args, data):
 
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=90, env=env)
-        print(f"[OK] 股票跟踪已更新: {tracker_json}", file=sys.stderr)
+        logger.info(f"[OK] 股票跟踪已更新: {tracker_json}")
         if result.stdout.strip():
-            print(result.stdout.strip(), file=sys.stderr)
+            logger.info(result.stdout.strip())
     except subprocess.CalledProcessError as e:
-        print(f"[WARN] 股票跟踪更新失败: {(e.stderr or e.stdout or '')[:300]}", file=sys.stderr)
+        logger.info(f"[WARN] 股票跟踪更新失败: {(e.stderr or e.stdout or '')[:300]}")
     except Exception as e:
-        print(f"[WARN] 股票跟踪更新异常: {e}", file=sys.stderr)
-
-
-
-def push_to_feishu(html_path, data, cloudflare_url=None):
-    """发送早报摘要 + 在线链接到飞书私聊"""
-    if not FEISHU_USER_OPEN_ID:
-        print("[WARN] 未配置 FEISHU_USER_OPEN_ID，跳过飞书推送", file=sys.stderr)
-        return
-    
-    # 尝试加载 llm_analysis.json
-    analysis_path = os.path.join(os.path.dirname(html_path), "llm_analysis.json")
-    analysis = {}
-    if os.path.exists(analysis_path):
-        try:
-            analysis = load_json_safe(analysis_path)
-        except:
-            pass
-    
-    # 确定报告URL
-    report_url = cloudflare_url or f"https://{os.environ.get('CF_PAGES_PROJECT', 'stock-morning-brief')}.pages.dev/"
-    
-    # 构建详细摘要
-    lines = []
-    
-    # 1. 标题
-    report_date = data.get("report_date", "")
-    lines.append(f"📊 **{report_date} 股市早报**")
-    lines.append("")
-    
-    # 2. 核心数据
-    indices = data.get("yesterday", {}).get("indices", [])
-    sh_index = next((i for i in indices if i["name"] == "上证指数"), None)
-    
-    if sh_index:
-        close = sh_index.get("close", 0)
-        pct = sh_index.get("pct", 0)
-        turnover = data.get("yesterday", {}).get("turnover", {}).get("total", 0)
-        north = data.get("yesterday", {}).get("north_bound", {}).get("net_inflow")
-        breadth = data.get("yesterday", {}).get("market_breadth", {})
-        up_count = breadth.get("up_count", 0)
-        down_count = breadth.get("down_count", 0)
-        limit_up = breadth.get("limit_up", 0)
-        
-        lines.append("**📈 核心数据**")
-        lines.append(f"- 上证指数：{close:.2f} ({pct:+.2f}%)")
-        lines.append(f"- 两市成交：{turnover:.0f}亿")
-        if isinstance(north, (int, float)):
-            direction = "净流入" if north >= 0 else "净流出"
-            lines.append(f"- 北向资金：{direction}{abs(north):.1f}亿")
-        else:
-            lines.append("- 北向资金：未披露")
-        lines.append(f"- 涨跌家数：{up_count}涨 / {down_count}跌 / 涨停{limit_up}只")
-        lines.append("")
-    
-    # 3. 市场定调（从analysis）
-    market_tone = analysis.get("MARKET_TONE", "")
-    if market_tone:
-        tone_short = market_tone[:80] + "..." if len(market_tone) > 80 else market_tone
-        lines.append("**🎯 市场定调**")
-        lines.append(tone_short)
-        lines.append("")
-    
-    # 4. 领涨板块
-    sectors = data.get("yesterday", {}).get("sectors", {}).get("top_gainers", [])[:3]
-    if sectors:
-        lines.append("**🔥 领涨板块**")
-        for s in sectors:
-            pct = s.get("pct")
-            pct_text = f"{pct:+.2f}%" if isinstance(pct, (int, float)) else "—"
-            lines.append(f"- {s['name']} ({pct_text})")
-        lines.append("")
-    
-    # 5. 选股摘要（从analysis）
-    stocks = analysis.get("STOCKS", [])[:3]
-    if stocks:
-        lines.append("**⭐ 精选标的**")
-        for stock in stocks:
-            name = stock.get("name", "")
-            code = stock.get("code", "")
-            fund = stock.get("fund_scores", {})
-            tech = stock.get("tech_scores", {})
-            total = sum(fund.values()) + sum(tech.values())
-            lines.append(f"- **{name}** ({code}) 评分{total}分")
-        lines.append("")
-    
-    # 6. 链接
-    lines.append("---")
-    lines.append(f"📎 [查看完整早报]({report_url})")
-    lines.append(f"📈 [入选股票跟踪]({report_url}stock-tracker/)")
-    
-    markdown = "\n".join(lines)
-    
-    # 发送摘要（使用 bot 身份）
-    try:
-        env = os.environ.copy()
-        env["LARK_CLI_NO_PROXY"] = "1"
-        subprocess.run(
-            [LARK_CLI, "im", "+messages-send",
-             "--user-id", FEISHU_USER_OPEN_ID,
-             "--markdown", markdown, "--as", "bot"],
-            check=True, timeout=30, capture_output=True,
-            env=env,
-        )
-        print("[feishu] 早报摘要已推送", file=sys.stderr)
-    except subprocess.CalledProcessError as e:
-        print(f"[feishu] 推送失败: {e.stderr.decode()[:200] if e.stderr else 'unknown'}", file=sys.stderr)
-    except Exception as e:
-        print(f"[feishu] 推送异常: {e}", file=sys.stderr)
+        logger.info(f"[WARN] 股票跟踪更新异常: {e}")
 
 
 def main():
@@ -826,7 +697,7 @@ def main():
     args = parser.parse_args()
     
     if not args.html and not args.pdf:
-        print("[ERROR] 至少需要 --html 或 --pdf 之一", file=sys.stderr)
+        logger.info("[ERROR] 至少需要 --html 或 --pdf 之一")
         sys.exit(1)
     
     data = load_json_safe(args.data)
@@ -847,14 +718,14 @@ def main():
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(report_html)
     if not is_temp:
-        print(f"[OK] HTML 已生成: {html_path}", file=sys.stderr)
-    
+        logger.info(f"[OK] HTML 已生成: {html_path}")
+
     if args.pdf:
         ok = html_to_pdf(html_path, args.pdf)
         if ok:
-            print(f"[OK] PDF 已生成: {args.pdf}", file=sys.stderr)
+            logger.info(f"[OK] PDF 已生成: {args.pdf}")
         else:
-            print(f"[WARN] PDF 生成失败，HTML 在: {html_path}", file=sys.stderr)
+            logger.info(f"[WARN] PDF 生成失败，HTML 在: {html_path}")
     
     update_stock_tracker(args, data)
     
@@ -882,22 +753,22 @@ def main():
             if json_match:
                 deploy_info = json.loads(json_match.group(0))
                 cloudflare_url = deploy_info.get("cloudflare_url")
-                print(f"[OK] Cloudflare 已部署: {cloudflare_url}", file=sys.stderr)
+                logger.info(f"[OK] Cloudflare 已部署: {cloudflare_url}")
                 print(json.dumps(deploy_info, ensure_ascii=False))
             else:
                 match = re.search(r"https://[^\s]+", combined_output)
                 if match:
                     cloudflare_url = match.group(0).rstrip(".,)")
-                    print(f"[OK] Cloudflare 已部署: {cloudflare_url}", file=sys.stderr)
+                    logger.info(f"[OK] Cloudflare 已部署: {cloudflare_url}")
                     print(json.dumps({"cloudflare_url": cloudflare_url}, ensure_ascii=False))
                 else:
-                    print("[WARN] Cloudflare 部署成功，但未解析到URL", file=sys.stderr)
+                    logger.info("[WARN] Cloudflare 部署成功，但未解析到URL")
                     print(result.stdout)
         except subprocess.CalledProcessError as e:
-            print(f"[ERROR] Cloudflare 部署失败: {(e.stderr or e.stdout or '')[:500]}", file=sys.stderr)
+            logger.info(f"[ERROR] Cloudflare 部署失败: {(e.stderr or e.stdout or '')[:500]}")
             sys.exit(1)
         except Exception as e:
-            print(f"[ERROR] Cloudflare 部署异常: {e}", file=sys.stderr)
+            logger.info(f"[ERROR] Cloudflare 部署异常: {e}")
             sys.exit(1)
     
     if args.feishu_push:
@@ -906,8 +777,8 @@ def main():
     if is_temp and args.pdf:
         try:
             os.unlink(html_path)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception(f"删除临时 HTML 文件失败: {e}")
 
 
 if __name__ == "__main__":

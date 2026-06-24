@@ -21,6 +21,9 @@ from html import escape
 from datetime import datetime, timedelta
 from pathlib import Path
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'shared'))
+from utils import safe_float, pct_class
+
 try:
     import requests
 except ImportError:
@@ -107,15 +110,6 @@ def infer_market_prefix(code, market_class=""):
 
 def tencent_symbol(code, market_class=""):
     return f"{infer_market_prefix(code, market_class)}{normalize_code(code)}"
-
-
-def safe_float(value, default=None):
-    try:
-        if value in (None, "", "-"):
-            return default
-        return float(value)
-    except Exception:
-        return default
 
 
 def get_stock_logic(stock):
@@ -802,10 +796,8 @@ def update_tracker(args):
 
 # ==================== HTML 渲染 ====================
 
-def pct_class(value):
-    if value is None:
-        return "neutral"
-    return "up" if value >= 0 else "down"
+# 使用 shared/utils.py 的 pct_class
+# 本地 fmt_pct / fmt_return 用于股票跟踪页面特殊格式化
 
 
 def fmt_pct(value):

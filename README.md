@@ -1,27 +1,15 @@
-# Agent-Skills
+# stock-investment-agent
 
-A股智能分析专家团，基于每天喂养的素材+策略，提取分析框架，反哺知识库，增强方法论；基于迭代优化的方法论生成每日早报。
-
-> **架构升级进行中**：正在从"脚本+人肉协议"升级为多 Agent 架构。详见 [REFACTOR_PLAN.md](REFACTOR_PLAN.md)。
-> - ✅ **阶段 3 Agent 化**：已完成（5 个 Agent + 编排器 + 双模式 LLM）
-> - 🚧 阶段 0/1/2/4/5：规划升级中（见文末 TODO）
+A股智能分析专家团：可追溯、可评估、可自我进化。基于每天提供的素材+策略，提取分析框架，反哺知识库，增强方法论；基于迭代优化的方法论生成每日早报。
 
 ## 系统功能目标
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
-| **盘前策略早报** | 1.0 Skills 版本已实现 / 2.0 Multi-Agent 重构中 | 交易日盘前自动生成策略报告（数据→分析→选股→部署→推送） |
-| **收盘复盘与反哺** | 1.0 Skills 版本已实现 / 2.0 Multi-Agent 重构中 | 盘后复盘验证预测对错，反哺方法论优化 |
-| **策略学习与方法论进化** | 规划中 | 基于 RAG + Memory 的持续学习能力，方法论自动迭代 |
-| **飞书 Bot 集成** | 规划中 | 消息推送、交互式问答、知识输入 |
-
-## Skills 一览
-
-| Skill | 说明 | 触发词 |
-|-------|------|--------|
-| **stock-morning-brief** | 每日盘前早报：数据获取 → LLM 分析 → HTML 报告 → Cloudflare 部署 → 飞书推送 | 早评、股市早评、每日早报、morning brief |
-| **stock-daily-report** | A股收盘日报：18 模块 HTML/PDF 报告 | 收盘报告、A股复盘、今日复盘、daily report |
-| **stock-methodology-updater** | 方法论更新器：从样例中提取分析框架，反哺知识库 | 更新方法论、学习方法论、新样例 |
+| **盘前策略早报** | ✅ 已实现 | 交易日盘前自动生成策略报告（数据→分析→选股→部署→推送） |
+| **收盘复盘与反哺** | ✅ 已实现 | 盘后复盘验证预测对错，反哺方法论优化 |
+| **策略学习与方法论进化** | 🚧 规划中 | 基于 RAG + Memory 的持续学习能力，方法论自动迭代 |
+| **飞书 Bot 集成** | 🚧 规划中 | 消息推送、交互式问答、知识输入 |
 
 ## Agent 架构（阶段 3 已完成）
 
@@ -38,90 +26,83 @@ A股智能分析专家团，基于每天喂养的素材+策略，提取分析框
 
 ### 双模式 LLM
 
-| 模式 | 触发条件 | 行为 |
-|------|---------|------|
-| **在线** | `DEEPSEEK_API_KEY` 环境变量存在 | 4 Agent 并发调 DeepSeek API，自动合并 llm_analysis.json |
-| **离线** | 无 API Key | 4 Agent 生成 prompt 片段，复用现有 prepare 流程，等待外部执行（兼容人肉协议） |
+| 模式 | 触发条件 | 行为 | 适用场景 |
+|------|---------|------|---------|
+| **在线** | `DEEPSEEK_API_KEY` 环境变量存在 | 6 Agent 依次/并发调用 DeepSeek API（macro/sector 可并行），自动合并 llm_analysis.json | 生产环境，全自动 |
+| **离线** | 无 API Key | 6 Agent 生成 prompt 片段，复用现有 prepare 流程，等待外部执行（兼容人肉协议） | 调试/无 API 场景 |
 
-### 编排器
-
-`workflows/morning_brief.py` 状态机：
-
-```
-fetch → macro ──┐
-                ├─→ stock → risk_manager → review → compile → render → deploy → push → learn
-       sector ──┘
-```
-
-- macro / sector 在线模式可并行
-- 支持 `--from-step` 断点续跑
-- 支持 `--skip-deploy` / `--skip-push`
-- **learn** 步骤可选：从当日报告中自动提炼方法论
 
 ## 项目结构
 
 ```
-STOCK-SKILLS/
-├── agents/                          # 🆕 多 Agent 实现（阶段 3）
+STOCK-INVESTMENT-AGENT/
+├── agents/                          # 多 Agent 实现
 │   ├── __init__.py
 │   ├── base.py                      #   BaseAgent + AgentResult + Tool 基类
 │   ├── macro_agent.py               #   宏观市场 Agent
 │   ├── sector_agent.py              #   板块分析 Agent
 │   ├── stock_agent.py               #   选股 Agent
-│   └── review_agent.py              #   策略/复盘 Agent
-├── workflows/                       # 🆕 编排层（阶段 3）
+│   ├── risk_manager_agent.py        #   风控 Agent
+│   ├── review_agent.py              #   策略/复盘 Agent
+│   └── learning_agent.py            #   学习 Agent
+├── workflows/                       # 编排层
 │   ├── __init__.py
-│   └── morning_brief.py             #   早报全链路编排器（状态机+断点续跑+并发）
+│   └── morning_brief.py             #   早报全链路编排器
 ├── shared/                          # 共享代码模块
-│   ├── ai/                          # 🆕 LLM 相关（阶段 3）
-│   │   ├── __init__.py
-│   │   ├── llm_client.py            #   LLM 客户端（DeepSeek 在线 + 离线回退双模式）
-│   │   └── tools.py                 #   Tool 封装（现有脚本 → 可调用工具）
+│   ├── ai/                          #   LLM 相关
+│   │   ├── llm_client.py            #     LLM 客户端（DeepSeek 在线 + 离线回退）
+│   │   ├── validators.py            #     数据校验
+│   │   ├── insight_engine.py        #     洞察推导
+│   │   ├── html_builders.py         #     HTML 构建
+│   │   ├── prompt_builder.py        #     Prompt 构建
+│   │   ├── compiler.py              #     编译逻辑
+│   │   ├── response_parser.py       #     响应解析
+│   │   └── tools.py                 #     Tool 封装
+│   ├── run_context.py               #   run_id 贯穿全链路
 │   ├── cache.py                     #   SQLite 数据缓存
 │   ├── config_loader.py             #   配置加载器
-│   ├── data_fetcher.py              #   数据获取器 ⚠️ TODO 合并去重（阶段 1）
+│   ├── data_fetcher.py              #   数据获取器
 │   ├── history_data.py              #   历史数据管理
-│   ├── logger.py                    #   结构化日志系统 ⚠️ TODO 接入 skills/（阶段 0）
+│   ├── logger.py                    #   结构化日志系统
 │   ├── scoring_backtest.py          #   评分回测模块
 │   ├── technical_indicators.py      #   技术指标计算
-│   └── utils.py                     #   工具函数 ⚠️ TODO 去重（阶段 1）
+│   └── utils.py                     #   工具函数
 ├── knowledge-bases/                 # 方法论知识库
-│   ├── stock-methodology/           #   早报/选股方法论（核心）⚠️ TODO 升级 RAG（阶段 4）
+│   ├── stock-methodology/           #   早报/选股方法论（核心）
 │   └── stock-samples/               #   样例数据（gitignore）
 ├── config/                          # 配置文件
 │   ├── base.yaml                    #   基础配置
 │   ├── development.yaml             #   开发环境配置
 │   └── production.yaml              #   生产环境配置
 ├── tests/                           # 单元测试
-├── logs/                            # 日志文件 ⚠️ TODO 接入 observability（阶段 0/5）
-├── skills/                          # 技能模块（旧脚本，保留 3 个月对照）
+├── logs/                            # 日志文件
+├── skills/                          # 旧脚本（保留对照）
 │   ├── stock-morning-brief/         #   盘前早报
-│   │   ├── SKILL.md                 #     技能定义
-│   │   ├── scripts/                 #     Python 脚本
-│   │   ├── templates/               #     HTML 模板
-│   │   ├── references/              #     风格指南 & 样例
-│   │   └── docs/                    #     部署指南
 │   ├── stock-daily-report/          #   收盘日报
 │   └── stock-methodology-updater/   #   方法论更新器
-├── REFACTOR_PLAN.md                 # 架构重构方案（5 阶段计划）
+├── REFACTOR_PLAN.md                 # 架构重构方案
 └── README.md
 ```
-
-> **规划中目录**（见文末 TODO）：
-> - `memory/` — 运行时记忆（working_memory + state_store）
-> - `knowledge/` — RAG 引擎（embedder + vector_store + retriever）
-> - `observability/` — 可观测性（metrics + tracing + dashboard）
-> - `shared/services/` — 外部服务封装（data_service/deploy/push/pdf）
-> - `shared/scoring/` — 评分体系独立模块
-> - `shared/indicators/` — 技术指标独立模块
 
 ## 快速开始
 
 ### 环境要求
 
-- Python 3.9+
+- Python 3.9.12（推荐）
 - Node.js 22+（Cloudflare 部署需要）
-- [WorkBuddy](https://www.codebuddy.cn) 桌面端
+- [WorkBuddy](https://www.codebuddy.cn) 桌面端 （过渡期使用）
+
+依赖管理采用子模块独立方式，各 Skill 在对应目录下维护 `requirements.txt` 和 `.env.example`：
+
+```
+skills/
+├── stock-morning-brief/
+│   ├── requirements.txt    # 早报依赖
+│   └── .env.example        # 早报环境变量模板
+└── stock-daily-report/
+    ├── requirements.txt    # 日报依赖
+    └── .env.example        # 日报环境变量模板
+```
 
 ### 配置系统
 
@@ -140,6 +121,19 @@ config/
 export STOCK_SKILLS_ENV=development  # 或 production
 ```
 
+**安装依赖**：
+
+```bash
+# 安装早报依赖
+pip install -r skills/stock-morning-brief/requirements.txt
+
+# 安装日报依赖（如需）
+pip install -r skills/stock-daily-report/requirements.txt
+
+# 安装测试依赖（如需）
+pip install -r tests/requirements.txt
+```
+
 关键环境变量：
 
 | 变量 | 说明 |
@@ -147,6 +141,7 @@ export STOCK_SKILLS_ENV=development  # 或 production
 | `STOCK_SKILLS_ENV` | 运行环境（development/production） |
 | `STOCK_SKILLS_LOG_LEVEL` | 日志级别 |
 | `FEISHU_USER_OPEN_ID` | 飞书用户 ID（推送用） |
+| `CF_PAGES_PROJECT` | Cloudflare Pages 项目名（部署用，默认 `stock-morning-brief`） |
 | `DEEPSEEK_API_KEY` | DeepSeek API Key（在线模式，可选） |
 
 ### 生成早报
@@ -207,25 +202,19 @@ python3 -m pytest tests/ -v
 **新架构（Agent 编排器）**：
 
 ```
-FetchDataTool           获取市场数据（A股/美股/大宗/汇率）
-        ↓
-MacroAgent ─┐
-            ├─→ StockAgent → ReviewAgent → CompileTool → RenderReportTool → DeployCloudflareTool → PushFeishuTool
-SectorAgent─┘
+fetch → macro ──┐
+                ├─→ stock → risk_manager → review → compile → render → deploy → push → learn
+       sector ──┘
 ```
+
+- macro / sector 在线模式可并行
+- 支持 `--from-step` 断点续跑
+- 支持 `--skip-deploy` / `--skip-push`
 
 **旧架构（脚本串联，保留对照）**：
 
 ```
-fetch_data.py          获取市场数据
-        ↓
-generate_ai_texts.py   LLM 分析 → 结构化 JSON
-        ↓
-generate_report.py     填充 HTML 模板 + 可选 PDF
-        ↓
-deploy_to_cloudflare   部署到 Cloudflare Pages
-        ↓
-push_to_feishu         飞书推送摘要 + 链接
+fetch_data.py → generate_ai_texts.py → generate_report.py → deploy_to_cloudflare → push_to_feishu
 ```
 
 ### 选股评分体系
@@ -307,40 +296,21 @@ push_to_feishu         飞书推送摘要 + 链接
 
 方法论更新通过 `stock-methodology-updater` Skill 进行，遵循"提取方法、不搬运事实"原则。
 
-## 架构升级 TODO（规划升级中）
+## 重构进度
 
 > 完整方案见 [REFACTOR_PLAN.md](REFACTOR_PLAN.md)
 
 | 阶段 | 状态 | 内容 | 关键交付 |
 |------|------|------|---------|
-| **阶段 3** | ✅ 已完成 | Agent 化 | 4 Agent + 编排器 + 双模式 LLM + Tool 封装 |
-| 阶段 0 | 🚧 规划中 | 观测性基线 | logger 接入 skills/、消灭 14 个 bare except、run_id 贯穿 |
-| 阶段 1 | 🚧 规划中 | 消灭重复，shared 真正化 | 合并 data_fetcher + fetch_data、去重 utils、skills/ import shared/ |
-| 阶段 2 | 🚧 规划中 | 拆 generate_ai_texts.py | 拆 6 模块：validators/insight_engine/html_builders/prompt_builder/compiler/response_parser |
+| **阶段 0** | ✅ 已完成 | 观测性基线 | run_context.py + logger 接入 skills/ + 消灭 14 个 bare except |
+| **阶段 1** | ✅ 已完成 | 消灭重复，shared 真正化 | 删除重复函数定义 + skills/ 统一引用 shared/ |
+| **阶段 2** | ✅ 已完成 | 拆 generate_ai_texts.py | 6 模块：validators/insight_engine/html_builders/prompt_builder/compiler/response_parser |
+| **阶段 3** | ✅ 已完成 | Agent 化 | 6 Agent + 编排器 + 双模式 LLM + Tool 封装 |
 | 阶段 4 | 🚧 规划中 | RAG 知识库 | bge-small-zh embedding + chromadb + 检索增强 Agent prompt |
 | 阶段 5 | 🚧 规划中 | observability 完善 | metrics + tracing + dashboard + 异常告警 |
 | 阶段 6 | 🚧 规划中 | WebSearch 去依赖 | Tavily 搜索 API + 固定源补齐 + fetch_data 自动补数据，脱离 WorkBuddy Agent 独立运行 |
 
-### 阶段 6 说明：WebSearch 去依赖
-
-目标：配置 `DEEPSEEK_API_KEY` + `TAVILY_API_KEY` 两个 key 后，`python3 -m workflows.morning_brief` 全自动跑完，无需 WorkBuddy Agent 介入。
-
-| 子任务 | 方案 | 说明 |
-|--------|------|------|
-| 固定源补齐 | 新浪/AKShare | 日经 225、美元指数、北向成交额（部分可补） |
-| 搜索 API | Tavily | 免费 1000 次/月，专为 LLM 设计，结构化返回 |
-| fetch_data 改造 | mark_websearch 自动补 | 不再只标记，调 WebSearchTool 自动填数据 |
-| LLM 联网兜底（可选） | 通义/Kimi/GLM-4 | Tavily 也失败时兜底 |
-
-### 待新增目录
-
-- `memory/` — 运行时记忆（working_memory + state_store）
-- `knowledge/` — RAG 引擎（embedder + vector_store + retriever + indexer）
-- `observability/` — 可观测性（metrics + tracing + dashboard）
-- `shared/services/` — 外部服务封装（data_service/deploy/push/pdf）
-- `shared/scoring/` — 评分体系独立模块
-- `shared/indicators/` — 技术指标独立模块
-- `shared/ai/web_search_tool.py` — 搜索 API 工具（阶段 6）
+> 💡 阶段 4-6 为后续规划，具体实施时间待定。完整方案详见 [REFACTOR_PLAN.md](REFACTOR_PLAN.md)
 
 ## 注意事项
 

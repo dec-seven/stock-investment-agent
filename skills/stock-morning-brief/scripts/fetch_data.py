@@ -31,6 +31,14 @@ import requests
 # 禁用 requests 代理（解决沙箱环境中的代理连接问题）
 requests.Session.trust_env = False
 
+# ==================== 日志系统 ====================
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'shared'))
+from logger import get_logger
+from run_context import get_run_id
+from utils import safe_float
+
+logger = get_logger('fetch_data')
+
 # ==================== 数据源导入 ====================
 
 try:
@@ -47,18 +55,6 @@ except ImportError:
 
 
 # ==================== 工具函数 ====================
-
-def safe_float(val, default=None):
-    try:
-        if val is None or val == '' or val == '-':
-            return default
-        f = float(val)
-        if f != f:  # NaN 检测 (NaN != NaN)
-            return default
-        return f
-    except:
-        return default
-
 
 def load_template():
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -131,8 +127,8 @@ def fetch_sina_us_quote(symbol):
                     "close": close,
                     "pct": pct,
                 }
-    except:
-        pass
+    except Exception as e:
+        logger.exception(f"新浪美股行情获取失败: {e}")
     return None
 
 
@@ -177,7 +173,7 @@ def fetch_tencent_quote(code):
                     "change": change,
                 }
     except Exception as e:
-        print(f"[DEBUG] 腾讯API错误: {str(e)[:50]}", file=sys.stderr)
+        logger.info(f"腾讯API错误: {str(e)[:50]}")
     return None
 
 
@@ -212,8 +208,8 @@ def fetch_em_quote(secid):
                     "high": high,
                     "low": low,
                 }
-    except:
-        pass
+    except Exception as e:
+        logger.exception(f"东方财富实时行情获取失败: {e}")
     return None
 
 
@@ -221,7 +217,7 @@ def fetch_em_quote(secid):
 
 def fill_a_indices(data):
     """填充A股指数 - 多数据源尝试，优先腾讯财经"""
-    print("\n[INFO] === 填充 A股指数 ===", file=sys.stderr)
+    logger.info("\n=== 填充 A股指数 ===")
 
     index_map = {
         "上证指数": ("000001", "sh"),
@@ -283,7 +279,7 @@ def fill_a_indices(data):
                         "source": "tencent",
                         "need_websearch": False,
                     })
-                    print(f"[OK] 腾讯 {name}: {close:.2f} ({pct:+.2f}%)", file=sys.stderr)
+                    logger.info(f"腾讯 {name}: {close:.2f} ({pct:+.2f}%)")
                     continue
 
             # 腾讯失败，尝试 AkShare
@@ -306,10 +302,10 @@ def fill_a_indices(data):
                                 "source": "akshare",
                                 "need_websearch": False,
                             })
-                            print(f"[OK] AkShare {name}: {close:.2f}", file=sys.stderr)
+                            logger.info(f"AkShare {name}: {close:.2f}")
                             continue
-                except:
-                    pass
+                except Exception as e:
+                    logger.exception(f"AkShare获取指数数据失败: {e}")
 
             mark_websearch(idx, "所有数据源失败")
 
@@ -318,10 +314,10 @@ def fill_a_indices(data):
             data["yesterday"]["turnover"]["total"] = round(total_amount / 1e8, 2)
             data["yesterday"]["turnover"]["source"] = "tencent"
             data["yesterday"]["turnover"]["need_websearch"] = False
-            print(f"[OK] 两市成交额: {total_amount/1e8:.2f}亿", file=sys.stderr)
+            logger.info(f"两市成交额: {total_amount/1e8:.2f}亿")
 
     except Exception as e:
-        print(f"[WARN] 腾讯批量查询失败: {str(e)[:60]}", file=sys.stderr)
+        logger.info(f"腾讯批量查询失败: {str(e)[:60]}")
         # 回退到逐个获取
         for idx in data["yesterday"]["indices"]:
             name = idx["name"]
@@ -339,7 +335,7 @@ def fill_a_indices(data):
                     "source": "tencent",
                     "need_websearch": False,
                 })
-                print(f"[OK] 腾讯 {name}: {tencent_data['close']:.2f}", file=sys.stderr)
+                logger.info(f"腾讯 {name}: {tencent_data['close']:.2f}")
             else:
                 mark_websearch(idx, "获取失败")
 
@@ -348,7 +344,7 @@ def fill_a_indices(data):
 
 def fill_market_breadth(data):
     """填充涨跌家数 - 优先用乐咕市场活跃度(轻量稳定)，全量接口作兜底"""
-    print("\n[INFO] === 填充涨跌家数 ===", file=sys.stderr)
+    logger.info("\n=== 填充涨跌家数 ===")
     breadth = data["yesterday"]["market_breadth"]
 
     # 1. 优先：乐咕市场活跃度（单次轻量接口，避免拉全量5000股被风控）
@@ -360,7 +356,8 @@ def fill_market_breadth(data):
                 def _num(k):
                     try:
                         return int(float(kv.get(k)))
-                    except:
+                    except Exception as e:
+                        logger.debug(f"数值转换失败: {k} -> {kv.get(k)}", key=k, value=kv.get(k), error=str(e))
                         return None
                 up = _num("上涨"); down = _num("下跌"); flat = _num("平盘")
                 limit_up = _num("涨停"); limit_down = _num("跌停")
@@ -375,10 +372,10 @@ def fill_market_breadth(data):
                         "source": "akshare_legu",
                         "need_websearch": False,
                     })
-                    print(f"[OK] 乐咕活跃度 上涨:{up} 下跌:{down} 涨停:{limit_up} 跌停:{limit_down}", file=sys.stderr)
+                    logger.info(f"乐咕活跃度 上涨:{up} 下跌:{down} 涨停:{limit_up} 跌停:{limit_down}")
                     return
         except Exception as e:
-            print(f"[WARN] 乐咕活跃度失败: {str(e)[:50]}", file=sys.stderr)
+            logger.info(f"乐咕活跃度失败: {str(e)[:50]}")
 
     # 2. 兜底：全量行情统计（易被东财风控，可能 RemoteDisconnected）
     if AKSHARE_AVAILABLE:
@@ -404,22 +401,22 @@ def fill_market_breadth(data):
                     "source": "akshare",
                     "need_websearch": False,
                 })
-                print(f"[OK] 上涨:{up} 下跌:{down} 涨停:{limit_up}", file=sys.stderr)
+                logger.info(f"上涨:{up} 下跌:{down} 涨停:{limit_up}")
                 return
         except Exception as e:
-            print(f"[WARN] 全量行情统计失败: {str(e)[:50]}", file=sys.stderr)
+            logger.info(f"全量行情统计失败: {str(e)[:50]}")
 
     mark_websearch(breadth, "获取失败")
 
 
 def fill_turnover(data):
     """填充成交额"""
-    print("\n[INFO] === 填充成交额 ===", file=sys.stderr)
+    logger.info("\n=== 填充成交额 ===")
     turnover = data["yesterday"]["turnover"]
 
     # 如果已有成交额数据（来自腾讯财经），跳过
     if turnover.get("total") and turnover.get("source") == "tencent":
-        print(f"[OK] 成交额已由腾讯财经填充: {turnover['total']:.2f}亿", file=sys.stderr)
+        logger.info(f"成交额已由腾讯财经填充: {turnover['total']:.2f}亿")
         return
 
     # 尝试 AkShare
@@ -433,10 +430,10 @@ def fill_turnover(data):
                     "source": "akshare",
                     "need_websearch": False,
                 })
-                print(f"[OK] 两市成交额: {turnover['total']:.2f}亿", file=sys.stderr)
+                logger.info(f"两市成交额: {turnover['total']:.2f}亿")
                 return
-        except:
-            pass
+        except Exception as e:
+            logger.exception(f"AkShare获取成交额失败: {e}")
 
     # 尝试东方财富
     try:
@@ -450,10 +447,10 @@ def fill_turnover(data):
                 "source": "eastmoney",
                 "need_websearch": False,
             })
-            print(f"[OK] 两市成交额: {turnover['total']:.2f}亿", file=sys.stderr)
+            logger.info(f"两市成交额: {turnover['total']:.2f}亿")
             return
-    except:
-        pass
+    except Exception as e:
+        logger.exception(f"东方财富获取成交额失败: {e}")
 
     mark_websearch(turnover, "获取失败")
 
@@ -464,7 +461,7 @@ def fill_north_bound(data):
     stock_hsgt_hist_em 的净额列(当日成交净买额/当日资金流入)已恒为 NaN。
     此处尝试取净额，取不到则标记 websearch(由 Agent 补成交额等替代口径)。
     """
-    print("\n[INFO] === 填充北向资金 ===", file=sys.stderr)
+    logger.info("\n=== 填充北向资金 ===")
     nb = data["yesterday"]["north_bound"]
 
     if AKSHARE_AVAILABLE:
@@ -482,11 +479,11 @@ def fill_north_bound(data):
                                 "source": "akshare",
                                 "need_websearch": False,
                             })
-                            print(f"[OK] 北向净流入: {net:.2f}亿 ({col})", file=sys.stderr)
+                            logger.info(f"北向净流入: {net:.2f}亿 ({col})")
                             return
-                print("[WARN] 北向净额列为 NaN(官方2024-08起停披露)，转 WebSearch 补成交额", file=sys.stderr)
+                logger.info("北向净额列为 NaN(官方2024-08起停披露)，转 WebSearch 补成交额")
         except Exception as e:
-            print(f"[WARN] 北向获取失败: {str(e)[:50]}", file=sys.stderr)
+            logger.info(f"北向获取失败: {str(e)[:50]}")
 
     mark_websearch(nb, "官方停披露净额,需补成交额口径")
 
@@ -496,10 +493,10 @@ def fill_fund_flow(data):
     填充主力资金流向（行业 + 大盘）
     新增到 data["yesterday"]["fund_flow"]，供 ai_texts 生成资金面判断
     """
-    print("\n[INFO] === 填充主力资金流向 ===", file=sys.stderr)
+    logger.info("\n=== 填充主力资金流向 ===")
 
     if not AKSHARE_AVAILABLE:
-        print("[WARN] AKShare 不可用，跳过资金流向", file=sys.stderr)
+        logger.info("AKShare 不可用，跳过资金流向")
         return
 
     fund_flow = data["yesterday"].setdefault("fund_flow", {
@@ -537,9 +534,9 @@ def fill_fund_flow(data):
                 })
 
             fund_flow["need_websearch"] = False
-            print(f"[OK] 行业资金流向: 净流入前5={[s['name'] for s in fund_flow['top_inflow_sectors']]}", file=sys.stderr)
+            logger.info(f"行业资金流向: 净流入前5={[s['name'] for s in fund_flow['top_inflow_sectors']]}")
     except Exception as e:
-        print(f"[WARN] 行业资金流向获取失败: {e}", file=sys.stderr)
+        logger.info(f"行业资金流向获取失败: {e}")
 
     # 2. 大盘主力资金净流入（历史日度）
     try:
@@ -553,14 +550,14 @@ def fill_fund_flow(data):
                 if "主力净流入" in str(col) and "净占比" in str(col):
                     fund_flow["market_main_pct"] = round(float(latest[col]), 2)
             if fund_flow["market_main_net"] is not None:
-                print(f"[OK] 全市场主力净流入: {fund_flow['market_main_net']:.1f}亿 ({fund_flow['market_main_pct']}%)", file=sys.stderr)
+                logger.info(f"全市场主力净流入: {fund_flow['market_main_net']:.1f}亿 ({fund_flow['market_main_pct']}%)")
     except Exception as e:
-        print(f"[WARN] 大盘资金流向获取失败: {e}", file=sys.stderr)
+        logger.info(f"大盘资金流向获取失败: {e}")
 
 
 def fill_sectors(data):
     """填充行业板块 - 东财优先，新浪行业作兜底(东财全量易被风控)"""
-    print("\n[INFO] === 填充行业板块 ===", file=sys.stderr)
+    logger.info("\n=== 填充行业板块 ===")
     sectors = data["yesterday"]["sectors"]
 
     # 1. 东财行业板块
@@ -581,10 +578,10 @@ def fill_sectors(data):
                         item["name"] = str(row.get("板块名称", ""))
                         item["pct"] = safe_float(row.get("涨跌幅"))
                         item["need_websearch"] = False
-                print(f"[OK] 东财行业板块", file=sys.stderr)
+                logger.info("东财行业板块")
                 return
         except Exception as e:
-            print(f"[WARN] 东财行业板块失败(转新浪): {str(e)[:50]}", file=sys.stderr)
+            logger.info(f"东财行业板块失败(转新浪): {str(e)[:50]}")
 
     # 2. 新浪行业兜底(分类较粗,但稳定)
     if AKSHARE_AVAILABLE:
@@ -605,10 +602,10 @@ def fill_sectors(data):
                         item["name"] = str(row.get("板块", ""))
                         item["pct"] = round(float(row.get("涨跌幅", 0)), 2)
                         item["need_websearch"] = False
-                print(f"[OK] 新浪行业板块(兜底)", file=sys.stderr)
+                logger.info("新浪行业板块(兜底)")
                 return
         except Exception as e:
-            print(f"[WARN] 新浪行业板块失败: {str(e)[:50]}", file=sys.stderr)
+            logger.info(f"新浪行业板块失败: {str(e)[:50]}")
 
     for item in sectors["top_gainers"] + sectors["top_losers"]:
         mark_websearch(item, "获取失败")
@@ -633,8 +630,8 @@ def fetch_tencent_us_quote(symbol):
                 prev_close = safe_float(parts[4])
                 pct = round((close - prev_close) / prev_close * 100, 2) if close and prev_close else 0
                 return {"close": close, "pct": pct, "source": "tencent"}
-    except:
-        pass
+    except Exception as e:
+        logger.exception(f"腾讯美股行情获取失败: {e}")
     return None
 
 
@@ -651,8 +648,8 @@ def fetch_em_us_quote(secid):
             pct = d.get("f170", 0) / 100 if d.get("f170") else None
             if close:
                 return {"close": close, "prev_close": prev_close, "pct": pct, "source": "eastmoney"}
-    except:
-        pass
+    except Exception as e:
+        logger.exception(f"东方财富美股行情获取失败: {e}")
     return None
 
 
@@ -673,8 +670,8 @@ def fetch_sina_us_full(sina_code):
                 pct = safe_float(parts[2])
                 if close is not None and pct is not None:
                     return {"close": round(close, 2), "pct": round(pct, 2), "source": "sina"}
-    except:
-        pass
+    except Exception as e:
+        logger.exception(f"新浪美股/指数行情获取失败: {e}")
     return None
 
 
@@ -696,14 +693,14 @@ def fetch_sina_futures(sina_code):
                 if close is not None and prev_close:
                     pct = round((close - prev_close) / prev_close * 100, 2)
                     return {"close": round(close, 2), "pct": pct, "source": "sina"}
-    except:
-        pass
+    except Exception as e:
+        logger.exception(f"新浪国际期货行情获取失败: {e}")
     return None
 
 
 def fill_us_data(data):
     """填充美股数据 - 多数据源优先级：腾讯 > 东方财富 > 新浪 > yfinance"""
-    print("\n[INFO] === 填充美股数据 ===", file=sys.stderr)
+    logger.info("\n=== 填充美股数据 ===")
 
     # 数据源映射：(key, 腾讯代码, 东方财富secid, yfinance代码, 新浪代码, 新浪类型)
     # 新浪类型: 'gb'=美股/指数(gb_), 'hf'=国际期货(hf_)
@@ -730,13 +727,13 @@ def fill_us_data(data):
         if tencent_symbol and not result:
             result = fetch_tencent_us_quote(tencent_symbol)
             if result:
-                print(f"[OK] 腾讯 {item['name']}: {result['close']:.2f} ({result['pct']:+.2f}%)", file=sys.stderr)
+                logger.info(f"腾讯 {item['name']}: {result['close']:.2f} ({result['pct']:+.2f}%)")
 
         # 2. 尝试东方财富美股（个股）
         if em_secid and not result:
             result = fetch_em_us_quote(em_secid)
             if result:
-                print(f"[OK] 东方财富 {item['name']}: {result['close']:.2f} ({result['pct']:+.2f}%)", file=sys.stderr)
+                logger.info(f"东方财富 {item['name']}: {result['close']:.2f} ({result['pct']:+.2f}%)")
 
         # 3. 尝试新浪（最稳定的备用源，覆盖 SOX/NVDA/TSLA/原油/黄金）
         if sina_symbol and not result:
@@ -745,7 +742,7 @@ def fill_us_data(data):
             elif sina_type == "hf":
                 result = fetch_sina_futures(sina_symbol)
             if result:
-                print(f"[OK] 新浪 {item['name']}: {result['close']:.2f} ({result['pct']:+.2f}%)", file=sys.stderr)
+                logger.info(f"新浪 {item['name']}: {result['close']:.2f} ({result['pct']:+.2f}%)")
 
         # 4. 尝试 yfinance（最后备选，常被限流）
         if YFINANCE_AVAILABLE and yf_symbol and not result:
@@ -760,11 +757,11 @@ def fill_us_data(data):
                         "pct": round((close - prev_close) / prev_close * 100, 2),
                         "source": "yfinance",
                     }
-                    print(f"[OK] yfinance {item['name']}: {close:.2f}", file=sys.stderr)
+                    logger.info(f"yfinance {item['name']}: {close:.2f}")
             except Exception as e:
                 err_str = str(e)
                 if "RateLimit" not in err_str:
-                    print(f"[WARN] yfinance {item['name']}: {err_str[:50]}", file=sys.stderr)
+                    logger.info(f"yfinance {item['name']}: {err_str[:50]}")
 
         if result:
             item.update(result)
@@ -790,8 +787,8 @@ def fetch_sina_intl_index(sina_code):
                 pct = safe_float(parts[3])
                 if close is not None and pct is not None:
                     return {"close": round(close, 2), "pct": round(pct, 2), "source": "sina"}
-    except:
-        pass
+    except Exception as e:
+        logger.exception(f"新浪国际指数获取失败: {e}")
     return None
 
 
@@ -817,14 +814,14 @@ def fetch_sina_fx_cnh(sina_code="fx_susdcnh"):
                 cur = safe_float(parts[8]) or cur
                 if cur:
                     return {"close": round(cur, 4), "pct": 0.0, "source": "sina"}
-    except:
-        pass
+    except Exception as e:
+        logger.exception(f"新浪离岸人民币获取失败: {e}")
     return None
 
 
 def fill_global_markets(data):
     """填充全球市场 - yfinance 优先，新浪 int_/gb_$ 作备用"""
-    print("\n[INFO] === 填充全球市场 ===", file=sys.stderr)
+    logger.info("\n=== 填充全球市场 ===")
 
     # (key, yfinance代码, 新浪代码, 新浪类型) 类型: 'gb'=gb_$指数, 'int'=int_国际指数
     global_map = {
@@ -854,10 +851,10 @@ def fill_global_markets(data):
                         "source": "yfinance",
                         "need_websearch": False,
                     })
-                    print(f"[OK] yfinance {item['name']}: {close:.2f}", file=sys.stderr)
+                    logger.info(f"yfinance {item['name']}: {close:.2f}")
                     done = True
-            except:
-                pass
+            except Exception as e:
+                logger.exception(f"yfinance获取{item['name']}失败: {e}")
 
         # 2. 新浪备用
         if not done and sina_symbol:
@@ -869,7 +866,7 @@ def fill_global_markets(data):
                     "source": "sina",
                     "need_websearch": False,
                 })
-                print(f"[OK] 新浪 {item['name']}: {r['close']:.2f} ({r['pct']:+.2f}%)", file=sys.stderr)
+                logger.info(f"新浪 {item['name']}: {r['close']:.2f} ({r['pct']:+.2f}%)")
                 done = True
 
         if not done:
@@ -885,7 +882,7 @@ def fill_global_markets(data):
                 "source": "sina",
                 "need_websearch": False,
             })
-            print(f"[OK] 新浪 离岸人民币: {r['close']:.4f}", file=sys.stderr)
+            logger.info(f"新浪 离岸人民币: {r['close']:.4f}")
         else:
             mark_websearch(data["global_markets"]["cnh"], "需WebSearch")
 
@@ -924,21 +921,21 @@ def main():
     parser.add_argument("--force", action="store_true", help="强制执行，跳过交易日检查")
     args = parser.parse_args()
 
-    print(f"[INFO] 报告日期: {args.date}", file=sys.stderr)
+    logger.info(f"报告日期: {args.date}")
     
     # 交易日检查
     if not args.force:
         is_trading, reason = is_trading_day(args.date)
         if not is_trading:
-            print(f"[WARN] {args.date} 不是交易日：{reason}", file=sys.stderr)
-            print(f"[INFO] 使用 --force 参数可强制执行", file=sys.stderr)
-            print(f"[INFO] 如需生成报告，请指定最近的交易日日期", file=sys.stderr)
+            logger.info(f"{args.date} 不是交易日：{reason}")
+            logger.info("使用 --force 参数可强制执行")
+            logger.info("如需生成报告，请指定最近的交易日日期")
             sys.exit(0)
         else:
-            print(f"[INFO] 交易日检查通过", file=sys.stderr)
+            logger.info("交易日检查通过")
     
-    print(f"[INFO] AkShare: {'可用' if AKSHARE_AVAILABLE else '不可用'}", file=sys.stderr)
-    print(f"[INFO] yfinance: {'可用' if YFINANCE_AVAILABLE else '不可用'}", file=sys.stderr)
+    logger.info(f"AkShare: {'可用' if AKSHARE_AVAILABLE else '不可用'}")
+    logger.info(f"yfinance: {'可用' if YFINANCE_AVAILABLE else '不可用'}")
 
     # 加载模板
     data = load_template()
@@ -973,11 +970,11 @@ def main():
                 count_ws(i)
     count_ws(data)
 
-    print(f"\n[INFO] 需 WebSearch 补充: {websearch_count} 项", file=sys.stderr)
+    logger.info(f"\n需 WebSearch 补充: {websearch_count} 项")
 
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"[OK] 已保存: {args.output}", file=sys.stderr)
+    logger.info(f"已保存: {args.output}")
 
 
 if __name__ == "__main__":

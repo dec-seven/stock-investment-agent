@@ -17,6 +17,9 @@ import time
 import traceback
 from datetime import datetime, timedelta
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'shared'))
+from utils import safe_float
+
 # ==================== 数据源导入 ====================
 
 # AkShare - A股数据（国内数据优先源）
@@ -37,16 +40,6 @@ except ImportError:
 
 
 # ==================== 工具函数 ====================
-
-def safe_float(val, default=0.0):
-    """安全转换为浮点数"""
-    try:
-        if val is None or val == '' or val == '-':
-            return default
-        return float(val)
-    except (ValueError, TypeError):
-        return default
-
 
 def validate_number(val, field_name=""):
     """校验数字是否有效（非零、非空）"""

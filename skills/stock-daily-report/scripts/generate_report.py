@@ -13,6 +13,9 @@ import re
 import tempfile
 from datetime import datetime
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'shared'))
+from utils import format_pct, format_amount, push_to_feishu
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(SCRIPT_DIR, "..", "references", "report_template.html")
 
@@ -136,27 +139,6 @@ def build_snap_tags(indices, breadth, total_turnover=None):
                f'<span class="tag-value">{down}</span></span>')
 
     return "".join(tags)
-
-
-# ───────────────────────────────────────────────
-# 格式化工具
-# ───────────────────────────────────────────────
-def format_pct(val):
-    if val is None:
-        return "—"
-    if val > 0:
-        return f"+{val:.2f}%"
-    if val < 0:
-        return f"{val:.2f}%"
-    return "0.00%"
-
-
-def format_amount(val):
-    if val is None:
-        return "—"
-    if abs(val) >= 10000:
-        return f"{val/10000:.2f}万亿"
-    return f"{val:.2f}亿"
 
 
 # ───────────────────────────────────────────────
@@ -407,88 +389,6 @@ def html_to_pdf(html_path, pdf_path):
 
     print("[WARN] PDF 生成失败，仅保存 HTML", file=sys.stderr)
     return False
-
-
-# ───────────────────────────────────────────────
-# 飞书推送
-# ────────────────────────────────────────────────
-def push_to_feishu(html_path, data):
-    """发送摘要 + HTML 文件到飞书私聊"""
-    indices = data.get("indices", [])
-    breadth = data.get("market_breadth", {})
-    total_turnover = data.get("total_turnover")
-    main_net = data.get("main_net_flow")
-    trade_date = data.get("trade_date", "")
-
-    # 构建摘要
-    idx_lines = []
-    for idx in indices[:5]:
-        name = INDEX_SHORT_NAMES.get(idx.get("name", ""), idx.get("name", ""))
-        close = idx.get("close", 0)
-        pct = idx.get("pct", 0)
-        idx_lines.append(f"{name} **{close:.2f}** ({pct:+.2f}%)")
-    idx_summary = " | ".join(idx_lines)
-
-    up = breadth.get("up_count", 0)
-    down = breadth.get("down_count", 0)
-    lu = breadth.get("limit_up_count", 0)
-    mn_str = format_amount(main_net) if main_net else "—"
-    vol_str = format_amount(total_turnover) if total_turnover else "—"
-
-    markdown = (
-        f"**📊 A股收盘日报 | {trade_date}**\n\n"
-        f"{idx_summary}\n\n"
-        f"成交额 **{vol_str}** | 涨跌比 **{up} : {down}** | 涨停 **{lu}家**\n"
-        f"主力资金 **{mn_str}**\n\n"
-        f"详情见下方文件 ⬇"
-    )
-
-    # 发送摘要
-    try:
-        subprocess.run(
-            [LARK_CLI, "im", "+messages-send",
-             "--user-id", FEISHU_USER_OPEN_ID,
-             "--markdown", markdown, "--as", "bot"],
-            check=True, timeout=30, capture_output=True,
-        )
-        print("[feishu] 摘要已推送", file=sys.stderr)
-    except subprocess.CalledProcessError as e:
-        print(f"[feishu] 摘要推送失败: {e.stderr.decode()[:200]}", file=sys.stderr)
-
-    # 处理文件路径：lark-cli 要求 cwd 相对路径
-    abs_path = os.path.abspath(html_path)
-    cwd = os.getcwd()
-    try:
-        rel = os.path.relpath(abs_path, cwd)
-    except ValueError:
-        rel = os.path.basename(abs_path)
-    if rel.startswith(".."):
-        # 文件在 cwd 外，复制到 cwd
-        tmp_name = os.path.basename(abs_path)
-        tmp_path = os.path.join(cwd, tmp_name)
-        shutil.copy2(abs_path, tmp_path)
-        rel = tmp_name
-        copied = True
-    else:
-        copied = False
-
-    # 发送 HTML 文件
-    try:
-        subprocess.run(
-            [LARK_CLI, "im", "+messages-send",
-             "--user-id", FEISHU_USER_OPEN_ID,
-             "--file", rel, "--as", "bot"],
-            cwd=cwd, check=True, timeout=60, capture_output=True,
-        )
-        print("[feishu] HTML 文件已推送", file=sys.stderr)
-    except subprocess.CalledProcessError as e:
-        print(f"[feishu] 文件推送失败: {e.stderr.decode()[:200]}", file=sys.stderr)
-    finally:
-        if copied:
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
 
 
 # ───────────────────────────────────────────────
