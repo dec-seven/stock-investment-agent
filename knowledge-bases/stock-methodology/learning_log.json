@@ -1,5 +1,15 @@
 {
-  "entries": [],
+  "entries": [
+    {
+      "source_title": "早报自动复盘 2026-06-24",
+      "source_date": "2026-06-24",
+      "learned_at": "2026-06-24T13:01:54.323933",
+      "summary": "规则提取：识别到 0 条关键模式",
+      "files_updated": [
+        "/Users/DecSeven/workspace/agent/stock-skills/knowledge-bases/stock-methodology/stock_morning_brief_guide.md"
+      ]
+    }
+  ],
   "version": "1.0",
   "description": "LearningAgent 学习记录，防止重复学习同一素材"
 }

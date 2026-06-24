@@ -64,6 +64,10 @@ class MorningBriefWorkflow:
         self.work_dir = work_dir
         os.makedirs(work_dir, exist_ok=True)
 
+        # 加载 .env 文件（如果存在）
+        env_path = os.path.join(PROJECT_ROOT, "skills", "stock-morning-brief", ".env")
+        self._load_env_file(env_path)
+
         self.llm = llm_client or LLMClient()
         self.tools = build_default_tools()
 
@@ -84,6 +88,24 @@ class MorningBriefWorkflow:
         self.review_agent = ReviewAgent(llm_client=self.llm, tools=self.tools, run_id=self.run_id)
         self.risk_manager_agent = RiskManagerAgent(llm_client=self.llm, tools=self.tools, run_id=self.run_id)
         self.learning_agent = LearningAgent(llm_client=self.llm, tools=self.tools, run_id=self.run_id)
+
+    def _load_env_file(self, path: str):
+        """加载 .env 文件到环境变量（仅填充未设置的变量）"""
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for raw_line in f:
+                    line = raw_line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+                    if key and key not in os.environ:
+                        os.environ[key] = value
+        except Exception:
+            pass  # 静默失败，不影响主流程
 
     def run(self, from_step: str = None, skip_deploy: bool = False, skip_push: bool = False) -> dict:
         """运行完整工作流。

@@ -76,10 +76,19 @@ STOCK-INVESTMENT-AGENT/
 │   └── production.yaml              #   生产环境配置
 ├── tests/                           # 单元测试
 ├── logs/                            # 日志文件
-├── skills/                          # 旧脚本（保留对照）
-│   ├── stock-morning-brief/         #   盘前早报
-│   ├── stock-daily-report/          #   收盘日报
-│   └── stock-methodology-updater/   #   方法论更新器
+├── skills/                          # 配置/模板/数据（scripts 已精简）
+│   ├── stock-morning-brief/
+│   │   ├── scripts/                 #   仅保留 4 个核心脚本（被 tools.py 调用）
+│   │   │   ├── legacy/              #     已替代脚本（保留 3 个月对照）
+│   │   │   ├── fetch_data.py        #     数据获取（待迁移到 shared/services/data_service/）
+│   │   │   ├── generate_ai_texts.py #     CLI 入口（核心逻辑在 shared/ai/）
+│   │   │   ├── generate_report.py   #     HTML 渲染（待迁移）
+│   │   │   └── deploy_to_cloudflare.py #   Cloudflare 部署（待迁移）
+│   │   ├── templates/               #   HTML 模板
+│   │   ├── data/                    #   股票跟踪数据
+│   │   └── .env.example             #   环境变量模板
+│   ├── stock-daily-report/          #   收盘日报（待 Agent 化）
+│   └── stock-methodology-updater/   #   方法论更新器（待确认去留）
 ├── REFACTOR_PLAN.md                 # 架构重构方案
 └── README.md
 ```
@@ -98,11 +107,30 @@ STOCK-INVESTMENT-AGENT/
 skills/
 ├── stock-morning-brief/
 │   ├── requirements.txt    # 早报依赖
-│   └── .env.example        # 早报环境变量模板
+│   ├── .env.example        # 早报环境变量模板
+│   ├── templates/          # HTML 模板
+│   ├── data/               # 股票跟踪数据
+│   └── scripts/            # 仅保留 4 个核心脚本
+│       └── legacy/         # 已替代脚本（保留 3 个月对照）
 └── stock-daily-report/
     ├── requirements.txt    # 日报依赖
     └── .env.example        # 日报环境变量模板
 ```
+
+**scripts 精简说明**：
+
+早报 scripts/ 已精简，仅保留 4 个被 `shared/ai/tools.py` 调用的核心脚本：
+
+| 脚本 | 状态 | 说明 |
+|------|------|------|
+| `fetch_data.py` | 保留 | 数据获取（待迁移到 `shared/services/data_service/`） |
+| `generate_ai_texts.py` | 保留 | CLI 入口（核心逻辑在 `shared/ai/`） |
+| `generate_report.py` | 保留 | HTML 渲染（待迁移） |
+| `deploy_to_cloudflare.py` | 保留 | Cloudflare 部署（待迁移） |
+
+已移动到 `legacy/` 的脚本（7 个）：`stock_tracker.py`、`validate_llm_json.py`、`validate_market_data.py`、`fetch_closing_data.py`、`fetch_holiday_news.py`、`generate_review.py`、`save_prediction_snapshot.py`
+
+详见 `skills/stock-morning-brief/scripts/legacy/LEGACY_README.md`
 
 ### 配置系统
 
@@ -138,11 +166,11 @@ pip install -r tests/requirements.txt
 
 | 变量 | 说明 |
 |------|------|
+| `DEEPSEEK_API_KEY` | DeepSeek API Key（在线模式必需） |
 | `STOCK_SKILLS_ENV` | 运行环境（development/production） |
 | `STOCK_SKILLS_LOG_LEVEL` | 日志级别 |
 | `FEISHU_USER_OPEN_ID` | 飞书用户 ID（推送用） |
 | `CF_PAGES_PROJECT` | Cloudflare Pages 项目名（部署用，默认 `stock-morning-brief`） |
-| `DEEPSEEK_API_KEY` | DeepSeek API Key（在线模式，可选） |
 
 ### 生成早报
 

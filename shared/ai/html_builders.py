@@ -123,7 +123,8 @@ def build_mentality_html(sentiment_class: str, advice_lines: List[str]) -> str:
         >>> html = build_mentality_html("sentiment-warm", ["低吸不追高", "逢分歧布局低位方向"])
     """
     label = derive_sentiment_label(sentiment_class)
-    advice_html = "<br>".join([f"{'①②③④⑤'[i]} {line}" for i, line in enumerate(advice_lines)])
+    # 使用数字编号，避免超过5条时索引越界
+    advice_html = "<br>".join([f"{i+1}. {line}" for i, line in enumerate(advice_lines)])
     
     html = f'<div class="mentality-box {sentiment_class}"><div class="mentality-stage">{label}</div><div class="advice">{advice_html}</div></div>'
     
@@ -131,79 +132,97 @@ def build_mentality_html(sentiment_class: str, advice_lines: List[str]) -> str:
     return html
 
 
-def build_discipline_html(items: List[Dict]) -> str:
+def build_discipline_html(items: List) -> str:
     """
     生成操作纪律条目 HTML
     
     渲染操作纪律列表(通常4条:止损、仓位、追涨、情绪纪律)。
+    支持两种格式：
+    - 字符串数组: ["止损纪律", "仓位控制"]
+    - 字典数组: [{"title": "止损纪律", "desc": "跌破支撑位立即止损"}]
     
     Args:
-        items: 纪律条目列表,每项包含 title 和 desc 字段
+        items: 纪律条目列表
     
     Returns:
         str: HTML li 元素列表(不含外层 ul)
     
     Example:
-        >>> items = [{"title": "止损纪律", "desc": "跌破支撑位立即止损"}]
+        >>> items = ["止损纪律", "仓位控制"]
         >>> html = build_discipline_html(items)
     """
     html = ""
-    for item in items:
-        title = item.get("title", "")
-        desc = item.get("desc", "")
-        html += f'<li><b>{title}</b>：{desc}</li>'
+    for i, item in enumerate(items):
+        if isinstance(item, dict):
+            title = item.get("title", "")
+            desc = item.get("desc", "")
+            html += f'<li><b>{title}</b>：{desc}</li>'
+        elif isinstance(item, str):
+            html += f'<li>{item}</li>'
     
     logger.info("操作纪律条目渲染完成", discipline_count=len(items))
     return html
 
 
-def build_risk_warnings_html(risks: List[Dict]) -> str:
+def build_risk_warnings_html(risks: List) -> str:
     """
     生成风险提示 HTML
     
     渲染风险提示卡片(通常2-3条)。
+    支持两种格式：
+    - 字符串数组: ["市场情绪偏冷，放量下跌后可能延续调整"]
+    - 字典数组: [{"title": "美股波动风险", "desc": "VIX指数上升可能导致A股承压"}]
     
     Args:
-        risks: 风险条目列表,每项包含 title 和 desc 字段
+        risks: 风险条目列表
     
     Returns:
         str: HTML div 卡片列表
     
     Example:
-        >>> risks = [{"title": "美股波动风险", "desc": "VIX指数上升可能导致A股承压"}]
+        >>> risks = ["市场情绪偏冷", "高位股回调风险"]
         >>> html = build_risk_warnings_html(risks)
     """
     html = ""
     for i, risk in enumerate(risks, 1):
-        title = risk.get("title", f"风险{i}")
-        desc = risk.get("desc", "")
-        html += f'<div class="risk-box"><div class="risk-title">⚠️ {title}</div><div class="risk-desc">{desc}</div></div>'
+        if isinstance(risk, dict):
+            title = risk.get("title", f"风险{i}")
+            desc = risk.get("desc", "")
+            html += f'<div class="risk-box"><div class="risk-title">⚠️ {title}</div><div class="risk-desc">{desc}</div></div>'
+        elif isinstance(risk, str):
+            html += f'<div class="risk-box"><div class="risk-title">⚠️ 风险{i}</div><div class="risk-desc">{risk}</div></div>'
     
     logger.info("风险提示渲染完成", risk_count=len(risks))
     return html
 
 
-def build_strategy_html(items: List[Dict]) -> str:
+def build_strategy_html(items: List) -> str:
     """
     生成操作策略 HTML
     
     渲染操作策略列表(通常4条:仓位控制、参与节奏、方向优先、节奏建议)。
+    支持两种格式：
+    - 字符串数组: ["控制仓位，以防守为主", "关注龙头股"]
+    - 字典数组: [{"title": "仓位控制", "desc": "5-6成仓位"}]
     
     Args:
-        items: 策略条目列表,每项包含 title 和 desc 字段
+        items: 策略条目列表
     
     Returns:
         str: 完整的 HTML ul 字符串
     
     Example:
-        >>> items = [{"title": "仓位控制", "desc": "5-6成仓位"}]
+        >>> items = ["控制仓位", "关注龙头"]
         >>> html = build_strategy_html(items)
     """
     html = '<ul class="strategy-list">'
     for item in items:
-        title = item.get("title", "")
-        desc = item.get("desc", "")
-        html += f'<li><b>{title}</b>：{desc}</li>'
+        if isinstance(item, dict):
+            title = item.get("title", "")
+            desc = item.get("desc", "")
+            html += f'<li><b>{title}</b>：{desc}</li>'
+        elif isinstance(item, str):
+            html += f'<li>{item}</li>'
     html += '</ul>'
     
     logger.info("操作策略渲染完成", strategy_count=len(items))
@@ -243,28 +262,34 @@ def build_sector_table_html(sectors: List[Dict]) -> str:
     return html
 
 
-def build_style_summary_html(items: List[Dict]) -> str:
+def build_style_summary_html(items: List) -> str:
     """
     生成方法论沉淀 HTML
     
     渲染方法论沉淀列表(通常2-3条)。
+    支持两种格式：
+    - 字符串数组: ["聚焦化工、电子等涨价受益板块", "选择行业龙头"]
+    - 字典数组: [{"icon": "💰", "title": "涨价逻辑优先", "desc": "优先选择涨价受益标的"}]
     
     Args:
-        items: 方法论条目列表,每项包含 icon, title, desc 字段
+        items: 方法论条目列表
     
     Returns:
         str: 完整的 HTML ul 字符串
     
     Example:
-        >>> items = [{"icon": "💰", "title": "涨价逻辑优先", "desc": "优先选择涨价受益标的"}]
+        >>> items = ["聚焦化工板块", "选择龙头"]
         >>> html = build_style_summary_html(items)
     """
     html = '<ul class="style-summary-list">'
     for item in items:
-        icon = item.get("icon", "💡")
-        title = item.get("title", "")
-        desc = item.get("desc", "")
-        html += f'<li>{icon} <b>{title}</b>：{desc}</li>'
+        if isinstance(item, dict):
+            icon = item.get("icon", "💡")
+            title = item.get("title", "")
+            desc = item.get("desc", "")
+            html += f'<li>{icon} <b>{title}</b>：{desc}</li>'
+        elif isinstance(item, str):
+            html += f'<li>💡 {item}</li>'
     html += '</ul>'
     
     logger.info("方法论沉淀渲染完成", item_count=len(items))
